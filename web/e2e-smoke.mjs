@@ -47,6 +47,19 @@ function check(name, condition, extra = '') {
   }
 }
 
+const IPHONE_UA =
+  'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1';
+const ANDROID_UA =
+  'Mozilla/5.0 (Linux; Android 13; SM-G991B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Mobile Safari/537.36';
+
+const mkDevice = (id, userAgent = IPHONE_UA, platform = 'iPhone') => ({
+  id,
+  userAgent,
+  platform,
+  timezone: 'UTC',
+  clientTime: Date.now(),
+});
+
 function newClient(name) {
   const app = initializeApp(
     { apiKey: 'demo', projectId: PROJECT, appId: '1:1:web:1', storageBucket: `${PROJECT}.appspot.com` },
@@ -60,7 +73,15 @@ function newClient(name) {
   connectFunctionsEmulator(fns, '127.0.0.1', 5001);
   const storage = getStorage(app);
   connectStorageEmulator(storage, '127.0.0.1', 9199);
-  return { app, auth, db, fns, storage, call: (n) => httpsCallable(fns, n) };
+  return {
+    app,
+    auth,
+    db,
+    fns,
+    storage,
+    device: mkDevice(`device-${name}-0001`),
+    call: (n) => httpsCallable(fns, n),
+  };
 }
 
 /** Offsets a lat/lng by a distance in metres, due north. */
@@ -72,7 +93,6 @@ function locationPayload(point, accuracy = 12) {
   return { ...point, accuracy, capturedAt: Date.now() };
 }
 
-const device = { userAgent: 'e2e', platform: 'node', timezone: 'UTC', clientTime: Date.now() };
 
 /** A 1x1 JPEG. Content does not matter; the server checks size, type and age. */
 const TINY_JPEG = Buffer.from(
@@ -159,14 +179,14 @@ async function main() {
   const inRes = await samC.call('clockIn')({
     jobSiteId: siteId,
     location: locationPayload(north(SITE, 40)),
-    device,
+    device: samC.device,
   });
   check('clock-in accepted', inRes.data.method === 'gps', JSON.stringify(inRes.data));
   check('clock-in not flagged', inRes.data.needsReview === false, JSON.stringify(inRes.data.flags));
   check('distance computed', inRes.data.distanceMeters >= 35 && inRes.data.distanceMeters <= 45, `got ${inRes.data.distanceMeters}`);
 
   const doubleIn = await expectFailure(
-    samC.call('clockIn')({ jobSiteId: siteId, location: locationPayload(north(SITE, 40)), device }),
+    samC.call('clockIn')({ jobSiteId: siteId, location: locationPayload(north(SITE, 40)), device: samC.device }),
   );
   check('cannot clock in twice', doubleIn !== null);
 
@@ -176,7 +196,7 @@ async function main() {
   const aliUid = aliC.auth.currentUser.uid;
 
   const farAway = await expectFailure(
-    aliC.call('clockIn')({ jobSiteId: siteId, location: locationPayload(north(SITE, 5000)), device }),
+    aliC.call('clockIn')({ jobSiteId: siteId, location: locationPayload(north(SITE, 5000)), device: aliC.device }),
   );
   check('outside the geofence is refused', farAway !== null);
   check(
@@ -195,13 +215,13 @@ async function main() {
       jobSiteId: siteId,
       location: null,
       locationError: { code: 1, message: 'permission-denied' },
-      device,
+      device: aliC.device,
     }),
   );
   check('no location at all is refused', noLocation?.details?.reason === 'PHOTO_REQUIRED');
 
   const vague = await expectFailure(
-    aliC.call('clockIn')({ jobSiteId: siteId, location: locationPayload(SITE, 4000), device }),
+    aliC.call('clockIn')({ jobSiteId: siteId, location: locationPayload(SITE, 4000), device: aliC.device }),
   );
   check('a vague fix is refused', vague?.details?.flags?.includes('LOW_ACCURACY'), JSON.stringify(vague?.details?.flags));
 
@@ -209,7 +229,7 @@ async function main() {
     aliC.call('clockIn')({
       jobSiteId: siteId,
       location: { ...SITE, accuracy: 10, capturedAt: Date.now() - 30 * 60 * 1000 },
-      device,
+      device: aliC.device,
     }),
   );
   check('a replayed old fix is refused', stale?.details?.flags?.includes('STALE_FIX'), JSON.stringify(stale?.details?.flags));
@@ -221,7 +241,7 @@ async function main() {
     location: null,
     locationError: { code: 1, message: 'permission-denied' },
     photoPath,
-    device,
+    device: aliC.device,
   });
   check('photo fallback accepted', photoIn.data.method === 'photo', JSON.stringify(photoIn.data));
   check('photo fallback is flagged for review', photoIn.data.needsReview === true);
@@ -233,14 +253,14 @@ async function main() {
   const joUid = joC.auth.currentUser.uid;
 
   const reuse = await expectFailure(
-    joC.call('clockIn')({ jobSiteId: siteId, location: null, photoPath, device }),
+    joC.call('clockIn')({ jobSiteId: siteId, location: null, photoPath, device: joC.device }),
   );
   check("cannot use another worker's photo", reuse !== null, 'accepted a foreign photo!');
 
   const joPhoto = await uploadTestPhoto(joC, joUid);
-  await joC.call('clockIn')({ jobSiteId: siteId, location: null, photoPath: joPhoto, device });
+  await joC.call('clockIn')({ jobSiteId: siteId, location: null, photoPath: joPhoto, device: joC.device });
   const reusedOwn = await expectFailure(
-    joC.call('clockOut')({ jobSiteId: siteId, location: null, photoPath: joPhoto, device }),
+    joC.call('clockOut')({ jobSiteId: siteId, location: null, photoPath: joPhoto, device: joC.device }),
   );
   check('the same photo cannot back two punches', reusedOwn !== null, 'photo was reused!');
 
@@ -249,7 +269,7 @@ async function main() {
       jobSiteId: siteId,
       location: null,
       photoPath: `clock-photos/${joUid}/does-not-exist.jpg`,
-      device,
+      device: joC.device,
     }),
   );
   check('a non-existent photo is refused', missing !== null);
@@ -315,21 +335,21 @@ async function main() {
   const outRes = await samC.call('clockOut')({
     jobSiteId: siteId,
     location: locationPayload(north(SITE, 30)),
-    device,
+    device: samC.device,
   });
   check('clock-out accepted', outRes.data.method === 'gps', JSON.stringify(outRes.data));
   check('duration recorded', typeof outRes.data.durationMinutes === 'number');
   check('clean shift needs no review', outRes.data.needsReview === false);
 
   const noOpenShift = await expectFailure(
-    samC.call('clockOut')({ jobSiteId: siteId, location: locationPayload(SITE), device }),
+    samC.call('clockOut')({ jobSiteId: siteId, location: locationPayload(SITE), device: samC.device }),
   );
   check('cannot clock out when not clocked in', noOpenShift !== null);
 
   const aliOut = await aliC.call('clockOut')({
     jobSiteId: siteId,
     location: locationPayload(north(SITE, 20)),
-    device,
+    device: aliC.device,
   });
   check('flagged shift stays flagged after a clean clock-out', aliOut.data.needsReview === true);
 
@@ -393,14 +413,14 @@ async function main() {
   await admin.call('updateWorker')({ uid: kim.uid, jobSiteIds: [otherSite] });
   await kimC.auth.currentUser.getIdToken(true);
   const wrongSite = await expectFailure(
-    kimC.call('clockIn')({ jobSiteId: siteId, location: locationPayload(SITE), device }),
+    kimC.call('clockIn')({ jobSiteId: siteId, location: locationPayload(SITE), device: kimC.device }),
   );
   check('cannot clock in at an unassigned site', wrongSite !== null);
 
   console.log('\n=== 14. Deactivation takes effect immediately ===');
   await admin.call('setWorkerActive')({ uid: sam.uid, active: false });
   const deactivated = await expectFailure(
-    samC.call('clockIn')({ jobSiteId: siteId, location: locationPayload(SITE), device }),
+    samC.call('clockIn')({ jobSiteId: siteId, location: locationPayload(SITE), device: samC.device }),
   );
   check('a deactivated worker cannot clock in', deactivated !== null, 'deactivated worker clocked in!');
 
@@ -418,10 +438,10 @@ async function main() {
   const busySite = await expectFailure(admin.call('deleteJobSite')({ id: siteId }));
   check('cannot retire a site with someone clocked in', busySite !== null);
 
-  await joC.call('clockOut')({ jobSiteId: siteId, location: locationPayload(north(SITE, 10)), device });
+  await joC.call('clockOut')({ jobSiteId: siteId, location: locationPayload(north(SITE, 10)), device: joC.device });
   await admin.call('deleteJobSite')({ id: siteId });
   const retiredSiteIn = await expectFailure(
-    aliC.call('clockIn')({ jobSiteId: siteId, location: locationPayload(SITE), device }),
+    aliC.call('clockIn')({ jobSiteId: siteId, location: locationPayload(SITE), device: aliC.device }),
   );
   check('cannot clock in at a retired site', retiredSiteIn !== null);
 
@@ -441,6 +461,239 @@ async function main() {
   ]) {
     check(`audit records ${action}`, actions.has(action), [...actions].join(', '));
   }
+
+
+  console.log('\n=== 17. Device identification ===');
+  const samShiftDoc = (
+    await getDocs(query(collection(admin.db, 'shifts'), where('userId', '==', samUid)))
+  ).docs[0].data();
+  check(
+    'clock-in records a readable device name',
+    samShiftDoc.clockIn.device?.label === 'iPhone \u00b7 Safari',
+    `got ${samShiftDoc.clockIn.device?.label}`,
+  );
+  check(
+    'clock-in records the device id',
+    samShiftDoc.clockIn.device?.id === 'device-sam-0001',
+    `got ${samShiftDoc.clockIn.device?.id}`,
+  );
+
+  const deviceDoc = await getDocs(collection(admin.db, 'devices'));
+  check('devices register is populated', deviceDoc.size >= 1, `got ${deviceDoc.size}`);
+
+  const workerCannotReadDevices = await expectFailure(getDocs(collection(aliC.db, 'devices')));
+  check('worker cannot read the device register', workerCannotReadDevices !== null);
+
+  console.log('\n=== 18. Two workers on one handset is flagged ===');
+  const shared = 'shared-handset-9999';
+  const dana = await mk('dana@example.com', 'Dana Reed');
+  const eli = await mk('eli@example.com', 'Eli Nunez');
+  const danaC = newClient('dana');
+  const eliC = newClient('eli');
+  await signInWithEmailAndPassword(danaC.auth, dana.email, dana.temporaryPassword);
+  await signInWithEmailAndPassword(eliC.auth, eli.email, eli.temporaryPassword);
+
+  const site2 = (
+    await admin.call('upsertJobSite')({
+      name: 'Yard',
+      address: '',
+      lat: SITE.lat,
+      lng: SITE.lng,
+      radiusMeters: 150,
+      active: true,
+    })
+  ).data.id;
+
+  const danaIn = await danaC.call('clockIn')({
+    jobSiteId: site2,
+    location: locationPayload(north(SITE, 20)),
+    device: mkDevice(shared, ANDROID_UA, 'Linux armv8l'),
+  });
+  check('first worker on a fresh device is clean', danaIn.data.needsReview === false, JSON.stringify(danaIn.data.flags));
+
+  const eliIn = await eliC.call('clockIn')({
+    jobSiteId: site2,
+    location: locationPayload(north(SITE, 20)),
+    device: mkDevice(shared, ANDROID_UA, 'Linux armv8l'),
+  });
+  check(
+    'second worker on the same handset is flagged',
+    eliIn.data.flags.includes('SHARED_DEVICE'),
+    JSON.stringify(eliIn.data.flags),
+  );
+  check('shared-device punch needs review', eliIn.data.needsReview === true);
+
+  const eliShift = (
+    await getDocs(query(collection(admin.db, 'shifts'), where('userId', '==', eliC.auth.currentUser.uid)))
+  ).docs[0].data();
+  check(
+    'Android model is parsed into the label',
+    eliShift.clockIn.device?.label === 'Android (SM-G991B) \u00b7 Chrome',
+    `got ${eliShift.clockIn.device?.label}`,
+  );
+
+  console.log('\n=== 19. Worker requests a correction ===');
+  await danaC.call('clockOut')({
+    jobSiteId: site2,
+    location: locationPayload(north(SITE, 20)),
+    device: mkDevice(shared, ANDROID_UA, 'Linux armv8l'),
+  });
+  const danaUid = danaC.auth.currentUser.uid;
+  const danaShiftId = (
+    await getDocs(query(collection(admin.db, 'shifts'), where('userId', '==', danaUid)))
+  ).docs[0].id;
+
+  // Backdate the shift so a correction can propose times that are still in the
+  // past — a worker fixing "I finished at 4" is always talking about a shift
+  // that has already happened.
+  const danaInMs = Date.now() - 8 * 3600_000;
+  await admin.call('adjustShift')({
+    shiftId: danaShiftId,
+    clockInAt: danaInMs,
+    clockOutAt: danaInMs + 3600_000,
+    note: 'Backdated so the correction flow has a past shift to work on.',
+  });
+
+  const editNoReason = await expectFailure(
+    danaC.call('requestShiftEdit')({ shiftId: danaShiftId, clockOutAt: danaInMs + 3600_000, reason: '' }),
+  );
+  check('a correction request needs a reason', editNoReason !== null);
+
+  const noChange = await expectFailure(
+    danaC.call('requestShiftEdit')({ shiftId: danaShiftId, reason: 'nothing changed' }),
+  );
+  check('a request that changes nothing is refused', noChange !== null);
+
+  const editBackwards = await expectFailure(
+    danaC.call('requestShiftEdit')({
+      shiftId: danaShiftId,
+      clockInAt: danaInMs,
+      clockOutAt: danaInMs - 3600_000,
+      reason: 'backwards',
+    }),
+  );
+  check('finish before start is refused', editBackwards !== null);
+
+  const future = await expectFailure(
+    danaC.call('requestShiftEdit')({
+      shiftId: danaShiftId,
+      clockInAt: danaInMs,
+      clockOutAt: Date.now() + 86400_000,
+      reason: 'tomorrow',
+    }),
+  );
+  check('a finish time in the future is refused', future !== null);
+
+  const foreign = await expectFailure(
+    eliC.call('requestShiftEdit')({
+      shiftId: danaShiftId,
+      clockOutAt: danaInMs + 3600_000,
+      reason: 'not my shift',
+    }),
+  );
+  check("a worker cannot request changes on someone else's shift", foreign !== null);
+
+  await danaC.call('requestShiftEdit')({
+    shiftId: danaShiftId,
+    clockInAt: danaInMs,
+    clockOutAt: danaInMs + 4 * 3600_000,
+    reason: 'Phone died at lunch; I worked until 4.',
+  });
+  let danaShift = (await getDocs(query(collection(admin.db, 'shifts'), where('userId', '==', danaUid))))
+    .docs[0].data();
+  check('the request is recorded as pending', danaShift.hasPendingEdit === true);
+  // The shift was backdated to one hour above; a pending request must not move it.
+  check(
+    'the original times are untouched while pending',
+    danaShift.durationMinutes === 60,
+    `got ${danaShift.durationMinutes}`,
+  );
+  check('the reviewer sees the original alongside the request', danaShift.pendingEdit.originalClockInAt !== undefined);
+
+  const doubleRequest = await expectFailure(
+    danaC.call('requestShiftEdit')({
+      shiftId: danaShiftId,
+      clockOutAt: danaInMs + 5 * 3600_000,
+      reason: 'again',
+    }),
+  );
+  check('only one request can be outstanding at a time', doubleRequest !== null);
+
+  console.log('\n=== 20. Only a supervisor can rule on it ===');
+  const workerApproves = await expectFailure(
+    danaC.call('reviewShiftEdit')({ shiftId: danaShiftId, decision: 'approved' }),
+  );
+  check('a worker cannot approve their own request', workerApproves !== null, 'worker self-approved!');
+
+  const peerApproves = await expectFailure(
+    eliC.call('reviewShiftEdit')({ shiftId: danaShiftId, decision: 'approved' }),
+  );
+  check('another worker cannot approve it either', peerApproves !== null);
+
+  const rejectNoNote2 = await expectFailure(
+    admin.call('reviewShiftEdit')({ shiftId: danaShiftId, decision: 'rejected' }),
+  );
+  check('turning a request down needs a note', rejectNoNote2 !== null);
+
+  await admin.call('reviewShiftEdit')({
+    shiftId: danaShiftId,
+    decision: 'approved',
+    note: 'Foreman confirmed the finish time.',
+  });
+  danaShift = (await getDocs(query(collection(admin.db, 'shifts'), where('userId', '==', danaUid))))
+    .docs[0].data();
+  check('approval applies the requested times', danaShift.durationMinutes === 240, `got ${danaShift.durationMinutes}`);
+  check('approval clears the pending flag', danaShift.hasPendingEdit === false);
+  check('approved shift is marked as worker-edited', danaShift.flags.includes('WORKER_EDITED'));
+  check('the worker can see the outcome', danaShift.lastEdit?.status === 'approved');
+
+  const reviewAgain = await expectFailure(
+    admin.call('reviewShiftEdit')({ shiftId: danaShiftId, decision: 'approved' }),
+  );
+  check('a resolved request cannot be ruled on twice', reviewAgain !== null);
+
+  console.log('\n=== 21. Withdrawing and rejecting ===');
+  await danaC.call('requestShiftEdit')({
+    shiftId: danaShiftId,
+    clockOutAt: danaInMs + 6 * 3600_000,
+    reason: 'Actually it was six hours.',
+  });
+  const foreignCancel = await expectFailure(eliC.call('cancelShiftEdit')({ shiftId: danaShiftId }));
+  check("a worker cannot withdraw someone else's request", foreignCancel !== null);
+
+  await danaC.call('cancelShiftEdit')({ shiftId: danaShiftId });
+  danaShift = (await getDocs(query(collection(admin.db, 'shifts'), where('userId', '==', danaUid))))
+    .docs[0].data();
+  check('withdrawing clears the request', danaShift.hasPendingEdit === false);
+  check('withdrawing leaves the hours alone', danaShift.durationMinutes === 240, `got ${danaShift.durationMinutes}`);
+
+  await danaC.call('requestShiftEdit')({
+    shiftId: danaShiftId,
+    clockOutAt: danaInMs + 7 * 3600_000,
+    reason: 'Make it seven hours.',
+  });
+  await admin.call('reviewShiftEdit')({
+    shiftId: danaShiftId,
+    decision: 'rejected',
+    note: 'You were signed off site at 16:00.',
+  });
+  danaShift = (await getDocs(query(collection(admin.db, 'shifts'), where('userId', '==', danaUid))))
+    .docs[0].data();
+  check('rejection leaves the hours unchanged', danaShift.durationMinutes === 240, `got ${danaShift.durationMinutes}`);
+  check('the worker sees why it was turned down', danaShift.lastEdit?.note?.includes('16:00') === true);
+
+  const auditsAfter = await getDocs(collection(admin.db, 'auditLogs'));
+  const editActions = new Set(auditsAfter.docs.map((d) => d.data().action));
+  for (const action of ['shift.edit_requested', 'shift.edit_withdrawn', 'shift.edit_reviewed']) {
+    check(`audit records ${action}`, editActions.has(action), [...editActions].join(', '));
+  }
+
+  await Promise.all(
+    [danaC, eliC].map(async (c) => {
+      await signOut(c.auth).catch(() => {});
+      await deleteApp(c.app);
+    }),
+  );
 
   await Promise.all(
     [admin, samC, aliC, joC, kimC].map(async (c) => {

@@ -124,6 +124,10 @@ export const adjustShift = onCall(CALLABLE_OPTS, async (request) => {
     flags,
     needsReview: false,
     review: { status: 'approved', by: caller.uid, at: Timestamp.now(), note },
+    // An admin setting the times directly supersedes anything the worker had
+    // outstanding, so it must not be left sitting in the change queue.
+    hasPendingEdit: false,
+    pendingEdit: null,
     updatedAt: FieldValue.serverTimestamp(),
   });
 
@@ -188,6 +192,8 @@ export const autoCloseStaleShifts = onSchedule(
         durationMinutes: 0,
         flags: Array.from(new Set([...(shift.flags ?? []), FLAG.AUTO_CLOSED])),
         needsReview: true,
+        pendingEdit: null,
+        hasPendingEdit: false,
         'review.status': 'pending',
         updatedAt: FieldValue.serverTimestamp(),
       });

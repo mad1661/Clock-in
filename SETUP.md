@@ -169,10 +169,23 @@ password to hand over.
 **Someone left.** Workers → **Deactivate**. They are signed out within seconds
 and cannot clock in. Their history stays intact for payroll.
 
-**A worker's punch is stuck in review.** Review tab. You get both punches, the
-coordinates with a map link, the photo, distance, accuracy, device and IP.
-Approve or reject with a note — the worker sees a rejection note on their
-timesheet.
+**A worker's punch is stuck in review.** Review tab, "Needs review". You get
+both punches, the coordinates with a map link, the photo, distance, accuracy,
+the handset and the IP. Approve or reject with a note — the worker sees a
+rejection note on their timesheet.
+
+**A worker has asked to correct their hours.** Review tab, "Change requests".
+You see the recorded times beside the times they are asking for, their reason,
+and the captured evidence underneath. Approving applies the change and marks the
+shift as worker-edited; turning it down needs a note, which they see. Nothing on
+the timesheet moves until you decide. Workers can request a correction on their
+own closed shifts within 14 days — after that it is a supervisor adjustment.
+
+**Two workers clocked in from the same phone.** That trips the shared-handset
+flag and lands in the review queue. Check the device handle (`D-4F2A9C`) on each
+punch in the evidence view — the model names are often identical, so the handle
+is what tells them apart. It is not always dishonest; a crew lead clocking in
+someone whose battery died looks exactly the same.
 
 **Someone forgot to clock out.** A nightly sweep closes any shift open longer
 than 16 hours, records it as zero minutes, and puts it in the review queue.
@@ -191,6 +204,8 @@ the number. The ones you are most likely to touch:
 | `defaultSiteRadiusMeters` | 150 m | Per-site radius is set in the UI; this is just the starting value. |
 | `maxAccuracyMeters` | 150 m | Raise if crews work somewhere with chronically poor GPS and hit the photo path too often. |
 | `maxShiftHours` | 16 h | Set above your longest realistic shift. |
+| `maxEditRequestAgeDays` | 14 d | How far back a worker may ask to correct their own timesheet. Keep it inside your payroll period. |
+| `sharedDeviceWindowHours` | 12 h | How long after one worker punches on a handset another triggers the shared-device flag. |
 | `minSecondsBetweenActions` | 30 s | Rarely worth changing. |
 
 After editing, `npm --prefix functions run build && firebase deploy --only functions`.

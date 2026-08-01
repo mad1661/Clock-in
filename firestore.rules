@@ -66,6 +66,15 @@ service cloud.firestore {
       allow write: if false; // functions only
     }
 
+    // --- Devices ------------------------------------------------------------
+    // The handset register behind the shared-device check. Admin-readable so a
+    // supervisor can see which phones a worker punches from; never client-writable,
+    // otherwise the buddy-punching check could be erased by the person tripping it.
+    match /devices/{deviceId} {
+      allow read: if isAdmin();
+      allow write: if false; // functions only
+    }
+
     // --- Audit log ----------------------------------------------------------
     // Append-only from functions; readable by admins for investigations.
     match /auditLogs/{logId} {

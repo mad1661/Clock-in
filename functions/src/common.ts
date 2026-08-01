@@ -108,6 +108,9 @@ export type AuditAction =
   | 'shift.clock_out'
   | 'shift.review'
   | 'shift.manual_edit'
+  | 'shift.edit_requested'
+  | 'shift.edit_withdrawn'
+  | 'shift.edit_reviewed'
   | 'shift.auto_close'
   | 'admin.bootstrap';
 

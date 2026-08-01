@@ -14,7 +14,8 @@ import {
 import { POLICY, FLAG, type FlagCode } from './config';
 import { distanceMeters, parseLocation, MAX_PLAUSIBLE_SPEED_MPS } from './geo';
 import { verifyPhoto } from './photo';
-import type { ClockRequest, DeviceInput, JobSiteDoc, PunchRecord, ShiftDoc } from './types';
+import { registerDevice, sanitiseDevice } from './device';
+import type { ClockRequest, JobSiteDoc, PunchRecord, ShiftDoc } from './types';
 
 /** Structured detail attached to a rejection so the UI can react precisely. */
 interface RejectionDetail {
@@ -24,23 +25,6 @@ interface RejectionDetail {
   allowedRadiusMeters: number;
   accuracyMeters: number | null;
   jobSiteName: string;
-}
-
-function sanitiseDevice(raw: unknown): DeviceInput | null {
-  if (!raw || typeof raw !== 'object') return null;
-  const d = raw as Record<string, unknown>;
-  const str = (v: unknown, max: number) =>
-    typeof v === 'string' && v.length > 0 ? v.slice(0, max) : undefined;
-  return {
-    userAgent: str(d.userAgent, 400),
-    platform: str(d.platform, 80),
-    timezone: str(d.timezone, 80),
-    screen: str(d.screen, 40),
-    language: str(d.language, 40),
-    clientTime: typeof d.clientTime === 'number' && Number.isFinite(d.clientTime)
-      ? d.clientTime
-      : undefined,
-  };
 }
 
 async function loadJobSite(jobSiteId: string): Promise<JobSiteDoc> {
@@ -74,6 +58,14 @@ async function buildPunch(
   const flags: FlagCode[] = [];
 
   const device = sanitiseDevice(data.device);
+  const deviceOutcome = await registerDevice(
+    device?.id ?? null,
+    caller.uid,
+    device?.label ?? 'Unknown device',
+    serverNowMs,
+  );
+  flags.push(...deviceOutcome.flags);
+
   if (
     device?.clientTime !== undefined &&
     Math.abs(serverNowMs - device.clientTime) > POLICY.maxClockSkewMs
@@ -303,6 +295,9 @@ export const clockIn = onCall(CALLABLE_OPTS, async (request) => {
       at: null,
       note: null,
     },
+    pendingEdit: null,
+    hasPendingEdit: false,
+    lastEdit: null,
     createdAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
   };

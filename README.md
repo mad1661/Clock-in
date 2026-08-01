@@ -1,4 +1,4 @@
-# Clock In
+# Coburn Equipment Rentals — Time Clock
 
 A Firebase web app for clocking crews in and out of job sites, with location
 verification and a photo fallback when location services are not available.
@@ -23,6 +23,9 @@ Firebase project and deploying, start to finish, in about fifteen minutes.
   job site. **The punch is still recorded**; it goes to the administrator for
   approval rather than being lost.
 - A live timer while on shift, and their own timesheet.
+- If something is wrong — forgot to clock out, phone died — they can propose
+  corrected times with a reason. **They cannot change their own hours**: the
+  request goes to a supervisor and nothing moves until it is approved.
 
 **For administrators**
 
@@ -35,7 +38,12 @@ Firebase project and deploying, start to finish, in about fifteen minutes.
   full evidence: both punches, coordinates, a map link, the photo, distance,
   accuracy, device and IP.
 - Timesheets with date and worker filters, totals, and CSV export for payroll.
-- Adjust shift times when something goes wrong, with a mandatory reason.
+- Adjust shift times directly when something goes wrong, with a mandatory reason.
+- A separate queue of worker-requested corrections, showing recorded times
+  beside the proposed ones and the captured evidence underneath. Approve and the
+  times apply; turn it down with a note the worker sees on their timesheet.
+- See which handset each punch was made on, and get flagged when two workers
+  punch from the same one.
 
 ---
 
@@ -64,6 +72,7 @@ calling the API by hand gets you no further than the normal app does.
 | Distance ≤ site radius + accuracy slack (capped at 75 m) | Honest workers get the benefit of their fix's error bars; nobody can claim a 10 km accuracy radius to "reach" a site. |
 | Timestamp | Always the server's clock. A device with a wrong clock is flagged, never trusted. |
 | Impossible travel | Two punches 160 km apart twenty minutes apart get flagged. |
+| Shared handset | Two different workers punching from the same device inside 12 hours gets flagged — the classic shape of buddy punching. |
 | Already clocked in? | One open shift per person, created with `create()` so a double-tap loses cleanly. |
 | Rate limit | 30 seconds between actions. |
 | Site assignment | A worker restricted to certain sites cannot punch at others. |
@@ -92,6 +101,46 @@ against anything the client claims:
 
 Photos are write-once: Storage rules deny overwrite and delete, so once a photo
 is evidence it stays as it was.
+
+### Knowing what they clocked in on
+
+Every punch records the handset: a readable name derived server-side from the
+user agent ("iPhone · Safari", "Android (SM-G991B) · Chrome"), a stable
+per-browser id shown as a short handle like `D-4F2A9C`, plus the raw user
+agent, platform, screen, timezone and IP for anyone who needs the detail.
+
+That shows up on the timesheet row, in the evidence view for both punches, and
+as two columns in the CSV export. When a worker clocks in on one handset and
+out on another, the row says so — model names are frequently identical, which
+is why the handle is displayed next to them.
+
+The device id lives in the browser's local storage. It is **not** a security
+control: clearing site data mints a new one. Its job is to make a pattern
+visible that nothing else in the app would notice — two workers punching from
+one phone within a shift. Because sharing a phone is often legitimate (a crew
+lead clocking in someone whose battery died), that flags for review rather than
+refusing the punch.
+
+### Corrections go through a supervisor
+
+Workers can ask for their times to be fixed; they cannot fix them. A request
+holds the proposed times, the original times and the worker's reason on the
+shift, and changes nothing until a supervisor rules on it:
+
+- Only on your own shift, only once it is closed, only one outstanding at a
+  time, and only within 14 days.
+- Proposed times are validated the same way as anything else — finish after
+  start, nothing in the future, nothing over the maximum shift length.
+- Approving applies the times and marks the shift `WORKER_EDITED`, so the change
+  stays visible on the timesheet rather than blending into the captured record.
+- Turning it down requires a note, which the worker sees.
+- Withdrawing is available to the worker until it is decided.
+- The captured evidence — location, photo, device, IP — is never altered by an
+  edit, only the clock times.
+- Every request, withdrawal and decision lands in the audit log.
+
+If workers could edit their own hours directly, every other check in this app
+would be decoration. This is the reason the feature is shaped the way it is.
 
 ### Everything ends up in front of a human
 
@@ -127,6 +176,8 @@ firebase.json            Hosting, rules, functions and emulator config
 functions/src/
   clock.ts               Clock in/out — the verification logic
   photo.ts               Server-side photo checks and single-use claims
+  device.ts              Handset labelling and the shared-device check
+  shiftEdits.ts          Worker correction requests and supervisor approval
   geo.ts                 Haversine distance, input validation
   adminUsers.ts          Worker accounts, roles, passwords, bootstrap
   jobSites.ts            Job site management
@@ -138,6 +189,7 @@ web/src/
   pages/admin/           Workers, job sites, timesheets, review queue
   lib/geolocation.ts     Best-fix acquisition, failure classification
   lib/photo.ts           Capture, downscale, upload
+  lib/device.ts          Per-install device id
   auth/AuthProvider.tsx  Session, live profile, claim refresh
 ```
 
@@ -146,7 +198,8 @@ web/src/
 - `users/{uid}` — profile, role, active flag, assigned sites.
 - `jobSites/{id}` — name, address, coordinates, radius, active flag.
 - `shifts/{id}` — one document per shift, holding both punch records with their
-  full evidence, plus flags and review state.
+  full evidence, plus flags, review state and any pending correction request.
+- `devices/{id}` — handset register behind the shared-device check.
 - `auditLogs/{id}` — append-only trail of every administrative action.
 - `photoClaims/{hash}` — burnt photo paths; unreadable by any client.
 
@@ -171,14 +224,17 @@ Both suites run against a **freshly started** emulator suite — the emulators
 hold their data in memory, and both tests seed their own.
 
 ```bash
-npm --prefix web run test:api     # 63 checks: server logic and security rules
-npm --prefix web run test:ui      # 26 checks: browser flows via Playwright
+npm --prefix web run test:api     # 96 checks: server logic and security rules
+npm --prefix web run test:ui      # 40 checks: browser flows via Playwright
 ```
 
 `test:api` covers the verification thresholds, the photo anti-replay checks,
-privilege escalation attempts, and the security rules. `test:ui` drives a real
-Chromium with mocked geolocation through the on-site, off-site and
-permission-denied paths, plus the admin console.
+device identification and the shared-handset flag, the correction-request rules
+(including that a worker cannot approve their own), privilege escalation
+attempts, and the security rules. `test:ui` drives a real Chromium with mocked
+geolocation through the on-site, off-site and permission-denied paths, the
+request-and-approve correction flow, and the admin console.
 
-`test:ui` reads the built app from the hosting emulator on port 5000, so run
+`test:ui` needs `web/.env` filled in with `VITE_USE_EMULATORS=true`, and reads
+the built app from the hosting emulator on port 5000 — so run
 `npm --prefix web run build` first. Set `SCREENSHOT_DIR` to capture screenshots.

@@ -4,13 +4,13 @@ import { db } from '../firebase';
 import { useAuth } from '../auth/AuthProvider';
 import {
   acquireLocation,
-  describeDevice,
   describeFailure,
   permissionHelp,
   type LocationFailure,
   type LocationFix,
 } from '../lib/geolocation';
 import { preparePhoto, uploadPhoto, type PreparedPhoto } from '../lib/photo';
+import { describeDevice } from '../lib/device';
 import { api, errorMessage, photoRequiredDetail, toLocationError, type ClockResult } from '../lib/api';
 import { distanceMeters, POLICY } from '../lib/policy';
 import { fmtDistance, fmtDateTime, elapsedSince } from '../lib/format';

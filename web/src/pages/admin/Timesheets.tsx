@@ -21,6 +21,7 @@ import {
   localDateInput,
   localDateTimeInput,
 } from '../../lib/format';
+import { shortDeviceId } from '../../lib/device';
 import type { Shift, UserDoc } from '../../lib/types';
 
 const PAGE_SIZE = 300;
@@ -98,11 +99,16 @@ export default function Timesheets() {
         'Hours',
         'In method',
         'Out method',
+        'In device',
+        'In device id',
+        'Out device',
+        'Out device id',
         'In distance (m)',
         'Out distance (m)',
         'Status',
         'Flags',
         'Review note',
+        'Pending change',
       ],
       ...(shifts ?? []).map((s) => [
         s.userDisplayName,
@@ -115,11 +121,16 @@ export default function Timesheets() {
         s.durationMinutes != null ? (s.durationMinutes / 60).toFixed(2) : '',
         s.clockIn.method,
         s.clockOut?.method ?? '',
+        s.clockIn.device?.label ?? '',
+        shortDeviceId(s.clockIn.device?.id) ?? '',
+        s.clockOut?.device?.label ?? '',
+        shortDeviceId(s.clockOut?.device?.id) ?? '',
         s.clockIn.distanceMeters != null ? String(s.clockIn.distanceMeters) : '',
         s.clockOut?.distanceMeters != null ? String(s.clockOut.distanceMeters) : '',
         s.needsReview ? 'needs review' : s.review.status,
         s.flags.join(' | '),
         s.review.note ?? '',
+        s.hasPendingEdit ? 'yes' : '',
       ]),
     ];
 
@@ -236,6 +247,9 @@ export default function Timesheets() {
                   ) : (
                     <StatusPill shift={shift} />
                   )}
+                  {shift.hasPendingEdit && (
+                    <span className="pill pill-brand">Change requested</span>
+                  )}
                 </div>
                 <div className="row-meta">
                   <span>{shift.jobSiteName}</span>
@@ -244,6 +258,29 @@ export default function Timesheets() {
                     {fmtTime(shift.clockInAt)} → {shift.clockOutAt ? fmtTime(shift.clockOutAt) : '…'}
                   </span>
                   <span>{fmtDuration(shift.durationMinutes)}</span>
+                </div>
+                <div className="device-line">
+                  <span aria-hidden="true">📱</span>
+                  <span className="device-name">
+                    {shift.clockIn.device?.label ?? 'Unknown device'}
+                  </span>
+                  {shortDeviceId(shift.clockIn.device?.id) && (
+                    <span className="pill pill-muted">
+                      {shortDeviceId(shift.clockIn.device?.id)}
+                    </span>
+                  )}
+                  {/* Clocking out on a different handset is worth seeing at a
+                      glance; the model names are often identical, so the id is
+                      what actually distinguishes them. */}
+                  {shift.clockOut?.device?.id &&
+                    shift.clockOut.device.id !== shift.clockIn.device?.id && (
+                      <>
+                        <span>· out on {shift.clockOut.device.label ?? 'another device'}</span>
+                        <span className="pill pill-muted">
+                          {shortDeviceId(shift.clockOut.device.id)}
+                        </span>
+                      </>
+                    )}
                 </div>
                 <div className="row-actions">
                   <button type="button" className="small" onClick={() => setOpen(shift)}>

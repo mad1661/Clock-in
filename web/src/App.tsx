@@ -17,7 +17,13 @@ function Shell({ children }: { children: React.ReactNode }) {
   return (
     <div className="app">
       <header className="topbar">
-        <span className="brand">⏱ Clock In</span>
+        <span className="brand">
+          <img src="/coburn-logo.png" alt="Coburn Equipment Rentals" />
+          <span className="brand-text">
+            <span className="brand-name">Coburn Equipment Rentals</span>
+            <span className="brand-sub">Time clock</span>
+          </span>
+        </span>
         <span className="who">{profile?.displayName ?? profile?.email}</span>
         <button type="button" className="small ghost" onClick={() => void signOut()}>
           Sign out

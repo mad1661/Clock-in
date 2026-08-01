@@ -13,6 +13,14 @@ import { chromium } from 'playwright';
 import { initializeApp } from 'firebase/app';
 import { getAuth, connectAuthEmulator, createUserWithEmailAndPassword } from 'firebase/auth';
 import { getFunctions, connectFunctionsEmulator, httpsCallable } from 'firebase/functions';
+import {
+  getFirestore,
+  connectFirestoreEmulator,
+  collection,
+  getDocs,
+  query,
+  where,
+} from 'firebase/firestore';
 
 const BASE = 'http://127.0.0.1:5000';
 const SITE = { latitude: 51.5074, longitude: -0.1278 };
@@ -30,6 +38,8 @@ const seedAuth = getAuth(seedApp);
 connectAuthEmulator(seedAuth, 'http://127.0.0.1:9099', { disableWarnings: true });
 const seedFns = getFunctions(seedApp, 'us-central1');
 connectFunctionsEmulator(seedFns, '127.0.0.1', 5001);
+const seedDb = getFirestore(seedApp);
+connectFirestoreEmulator(seedDb, '127.0.0.1', 8080);
 
 await createUserWithEmailAndPassword(seedAuth, ADMIN.email, ADMIN.password);
 await httpsCallable(seedFns, 'bootstrapAdmin')({ displayName: 'The Boss' });
@@ -51,6 +61,26 @@ const seeded = (
   })
 ).data;
 const WORKER = { email: seeded.email, password: seeded.temporaryPassword };
+
+/**
+ * Backdates the worker's shift so a correction can propose times that are still
+ * in the past. The server refuses future finish times, and a test that punches
+ * "now" would otherwise always trip that guard.
+ */
+async function backdateWorkerShift() {
+  const snap = await getDocs(
+    query(collection(seedDb, 'shifts'), where('userId', '==', seeded.uid)),
+  );
+  const shift = snap.docs.find((d) => d.data().status === 'closed');
+  if (!shift) throw new Error('No closed shift to backdate');
+  const start = Date.now() - 8 * 3600_000;
+  await httpsCallable(seedFns, 'adjustShift')({
+    shiftId: shift.id,
+    clockInAt: start,
+    clockOutAt: start + 3600_000,
+    note: 'Backdated so the correction flow has a past shift to work on.',
+  });
+}
 
 let pass = 0, fail = 0;
 const check = (n, c, extra = '') => {
@@ -196,8 +226,11 @@ console.log('\n=== Admin console ===');
   check('review queue lists flagged shifts', await page.getByText('Pat Doyle').first().isVisible());
   await shot(page, `ui-7-review-queue.png`, true);
 
-  const countBefore = Number(/\((\d+)\)/.exec(await page.locator('.card-head h2').first().innerText())[1]);
-  await page.getByRole('button', { name: 'Review' }).first().click();
+  const needsReviewHeading = page.getByRole('heading', { name: /Needs review/ });
+  const readCount = async () =>
+    Number(/\((\d+)\)/.exec(await needsReviewHeading.innerText())[1]);
+  const countBefore = await readCount();
+  await page.getByRole('button', { name: 'Review', exact: true }).first().click();
   await page.waitForSelector('.modal', { timeout: 15000 });
   check('evidence modal shows the photo punch', await page.getByText('Photo evidence').first().isVisible());
   check('evidence modal shows the verified punch', await page.getByText('Location verified').first().isVisible());
@@ -205,12 +238,18 @@ console.log('\n=== Admin console ===');
 
   await page.getByRole('button', { name: 'Approve', exact: true }).click();
   await page.waitForFunction(
-    (n) => !document.querySelector('.modal') &&
-      Number(/\((\d+)\)/.exec(document.querySelector('.card-head h2')?.textContent ?? '(999)')[1]) < n,
+    (n) => {
+      if (document.querySelector('.modal')) return false;
+      const heading = [...document.querySelectorAll('.card-head h2')].find((h) =>
+        h.textContent?.startsWith('Needs review'),
+      );
+      const match = /\((\d+)\)/.exec(heading?.textContent ?? '(999)');
+      return match ? Number(match[1]) < n : false;
+    },
     countBefore,
     { timeout: 20000 },
   );
-  const countAfter = Number(/\((\d+)\)/.exec(await page.locator('.card-head h2').first().innerText())[1]);
+  const countAfter = await readCount();
   check('approving removes the shift from the queue', countAfter === countBefore - 1, `${countBefore} -> ${countAfter}`);
 
   await page.getByRole('link', { name: 'Workers' }).click();
@@ -240,7 +279,116 @@ console.log('\n=== Admin console ===');
   await ctx.close();
 }
 
-// --- 5. Worker cannot reach admin routes -----------------------------------
+// --- 5. Worker requests a correction; supervisor approves it ---------------
+console.log('\n=== Worker requests a change, supervisor approves ===');
+await backdateWorkerShift();
+{
+  const { ctx, page } = await newPage({ geo: { ...SITE, accuracy: 12 } });
+  await login(page, WORKER);
+  await page.getByRole('link', { name: 'My hours' }).click();
+  await page.getByRole('button', { name: 'Request a change' }).first().waitFor({ timeout: 20000 });
+  check('worker can ask for a correction', true);
+
+  await page.getByRole('button', { name: 'Request a change' }).first().click();
+  await page.waitForSelector('.modal', { timeout: 15000 });
+  check(
+    'the modal says a supervisor must approve',
+    await page.getByText(/supervisor has to approve/i).isVisible(),
+  );
+
+  // Submitting without a reason must not go through — the supervisor needs one.
+  await page.getByRole('button', { name: /Send to my supervisor/ }).click();
+  check(
+    'a reason is required',
+    await page.locator('#e-reason').evaluate((el) => !el.checkValidity()) &&
+      (await page.locator('.modal').isVisible()),
+  );
+
+  await page.getByLabel('What happened? (required)').fill('Phone died — I finished at 16:30.');
+  const finish = await page.locator('#e-out').inputValue();
+  // Push the finish time an hour later than recorded.
+  const bumped = new Date(new Date(finish).getTime() + 3600000);
+  const pad = (n) => String(n).padStart(2, '0');
+  await page
+    .locator('#e-out')
+    .fill(
+      `${bumped.getFullYear()}-${pad(bumped.getMonth() + 1)}-${pad(bumped.getDate())}T${pad(bumped.getHours())}:${pad(bumped.getMinutes())}`,
+    );
+  await page.getByRole('button', { name: /Send to my supervisor/ }).click();
+
+  await page.getByText('Waiting on your supervisor').waitFor({ timeout: 25000 });
+  check('the request shows as waiting', await page.getByText('Waiting on your supervisor').isVisible());
+  check('the worker can withdraw it', await page.getByRole('button', { name: 'Withdraw request' }).isVisible());
+  await shot(page, `ui-12-change-pending.png`, true);
+  await ctx.close();
+}
+
+{
+  const { ctx, page } = await newPage({ geo: { ...SITE, accuracy: 12 } });
+  await login(page, ADMIN);
+  await page.getByRole('link', { name: 'Review' }).click();
+  await page.getByRole('button', { name: 'Review change' }).first().waitFor({ timeout: 20000 });
+  check('the change reaches the supervisor queue', true);
+  await shot(page, `ui-13-change-queue.png`, true);
+
+  await page.getByRole('button', { name: 'Review change' }).first().click();
+  await page.waitForSelector('.modal', { timeout: 15000 });
+  check('supervisor sees recorded vs requested', await page.locator('.compare').isVisible());
+  check('supervisor sees the reason', await page.getByText(/Phone died/).isVisible());
+  await shot(page, `ui-14-change-review.png`, true);
+
+  await page.getByRole('button', { name: 'Approve change' }).click();
+  await page.getByText('No outstanding change requests').waitFor({ timeout: 25000 });
+  check('approving clears the change queue', true);
+  await ctx.close();
+}
+
+{
+  const { ctx, page } = await newPage({ geo: { ...SITE, accuracy: 12 } });
+  await login(page, WORKER);
+  await page.getByRole('link', { name: 'My hours' }).click();
+  await page.getByText('Your change was approved').first().waitFor({ timeout: 20000 });
+  check('the worker is told it was approved', true);
+  check(
+    'the corrected shift is marked as worker-edited',
+    await page.getByText(/Times corrected at the worker/).first().isVisible(),
+  );
+  await shot(page, `ui-15-change-approved.png`, true);
+  await ctx.close();
+}
+
+// --- 6. Device is recorded and shown ---------------------------------------
+console.log('\n=== Device is recorded on each punch ===');
+{
+  const { ctx, page } = await newPage({ geo: { ...SITE, accuracy: 12 } });
+  await login(page, ADMIN);
+  await page.getByRole('link', { name: 'Timesheets' }).click();
+  await page.locator('.device-line').first().waitFor({ timeout: 20000 });
+  const deviceText = await page.locator('.device-line').first().innerText();
+  check(
+    'the timesheet says what they clocked in on',
+    /iPhone/.test(deviceText),
+    `got "${deviceText}"`,
+  );
+  await shot(page, `ui-16-device-timesheet.png`, true);
+
+  await page.getByRole('button', { name: 'Details' }).first().click();
+  await page.waitForSelector('.modal', { timeout: 15000 });
+  check(
+    'the evidence view names the device',
+    await page.locator('.modal .device-name').first().isVisible(),
+  );
+  check(
+    'the evidence view shows a device handle',
+    /^D-[A-Z0-9]+$/.test(
+      (await page.locator('.modal .device-line .pill').first().innerText()).trim(),
+    ),
+  );
+  await shot(page, `ui-17-device-evidence.png`, true);
+  await ctx.close();
+}
+
+// --- 7. Worker cannot reach admin routes -----------------------------------
 console.log('\n=== Worker cannot reach admin routes ===');
 {
   const { ctx, page } = await newPage({ geo: { ...SITE, accuracy: 12 } });

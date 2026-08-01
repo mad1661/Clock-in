@@ -60,6 +60,21 @@ export const POLICY = {
 
   /** A shift left open longer than this is auto-closed by the nightly sweep. */
   maxShiftHours: 16,
+
+  /**
+   * Two different employees punching from the same handset inside this window
+   * is flagged for review. Sharing a phone is not automatically dishonest — a
+   * crew lead may clock in someone whose battery died — so it is surfaced, not
+   * refused.
+   */
+  sharedDeviceWindowHours: 12,
+
+  /**
+   * How far back a worker may ask to correct their own timesheet. Long enough
+   * to cover "I forgot to clock out on Friday", short enough that a closed
+   * payroll period is not reopened.
+   */
+  maxEditRequestAgeDays: 14,
 } as const;
 
 /** Reasons a shift can be flagged for admin review. */
@@ -72,6 +87,8 @@ export const FLAG = {
   AUTO_CLOSED: 'AUTO_CLOSED',
   MANUAL_ENTRY: 'MANUAL_ENTRY',
   IMPOSSIBLE_TRAVEL: 'IMPOSSIBLE_TRAVEL',
+  SHARED_DEVICE: 'SHARED_DEVICE',
+  WORKER_EDITED: 'WORKER_EDITED',
 } as const;
 
 export type FlagCode = (typeof FLAG)[keyof typeof FLAG];

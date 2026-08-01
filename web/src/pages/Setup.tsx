@@ -38,6 +38,7 @@ export default function Setup() {
   return (
     <div className="centered">
       <div className="card" style={{ width: '100%', maxWidth: 460 }}>
+        <img className="brand-mark" src="/coburn-logo.png" alt="Coburn Equipment Rentals" />
         <h1>Set up your company</h1>
         <p className="hint">
           Signed in as <strong>{user?.email}</strong>, but this account is not linked to an employee

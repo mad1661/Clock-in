@@ -5,23 +5,28 @@
    ------------------------------------------------------------------------- */
 
 :root {
-  --bg: #0b1220;
-  --surface: #131c2e;
-  --surface-2: #1b263c;
-  --border: #2a374f;
-  --text: #e8eef8;
-  --muted: #93a4bf;
-  --accent: #3b82f6;
-  --accent-strong: #2563eb;
-  --success: #22c55e;
-  --success-dim: #14532d;
-  --warning: #f59e0b;
-  --warning-dim: #4a2f05;
-  --danger: #ef4444;
-  --danger-dim: #4c1111;
+  /* Coburn Equipment Rentals brand colours, sampled from the logo. */
+  --brand-blue: #003593;
+  --brand-blue-dark: #002670;
+  --brand-yellow: #fec102;
+
+  --bg: #eef1f6;
+  --surface: #ffffff;
+  --surface-2: #f4f6fa;
+  --border: #d3dae6;
+  --text: #16202f;
+  --muted: #5b6880;
+  --accent: #003593;
+  --accent-strong: #002670;
+  --success: #157347;
+  --success-dim: #e3f4ea;
+  --warning: #fec102;
+  --warning-dim: #fff5d6;
+  --danger: #c62828;
+  --danger-dim: #fdeaea;
   --radius: 14px;
-  --shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
-  color-scheme: dark;
+  --shadow: 0 8px 24px rgba(0, 53, 147, 0.14);
+  color-scheme: light;
 }
 
 * {
@@ -80,18 +85,63 @@ a {
   gap: 0.75rem;
   padding: 0.75rem 1rem;
   padding-top: calc(0.75rem + env(safe-area-inset-top));
-  background: rgba(11, 18, 32, 0.92);
+  background: rgba(255, 255, 255, 0.94);
   backdrop-filter: blur(8px);
-  border-bottom: 1px solid var(--border);
+  border-bottom: 3px solid var(--brand-blue);
 }
 
 .topbar .brand {
-  font-weight: 700;
-  letter-spacing: -0.01em;
   margin-right: auto;
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.6rem;
+  min-width: 0;
+}
+.topbar .brand img {
+  height: 38px;
+  width: auto;
+  flex: 0 0 auto;
+}
+.topbar .brand .brand-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.1;
+  min-width: 0;
+}
+.topbar .brand .brand-name {
+  font-weight: 800;
+  font-size: 0.9rem;
+  color: var(--brand-blue);
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.topbar .brand .brand-sub {
+  font-size: 0.68rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+}
+
+/* The mark on its own, for the sign-in and setup screens. */
+.brand-mark {
+  display: block;
+  width: 140px;
+  height: auto;
+  margin: 0 auto 0.75rem;
+}
+
+/* On a phone the mark already reads COBURN, so drop the wordmark rather than
+   let it crowd out the signed-in name. */
+@media (max-width: 520px) {
+  .topbar .brand .brand-text {
+    display: none;
+  }
+  .topbar .brand img {
+    height: 34px;
+  }
 }
 
 .topbar .who {
@@ -109,7 +159,7 @@ a {
   gap: 0.25rem;
   padding: 0.5rem 1rem;
   overflow-x: auto;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 2px solid var(--brand-yellow);
   background: var(--surface);
   scrollbar-width: none;
 }
@@ -254,12 +304,12 @@ button.primary {
 }
 button.success {
   background: var(--success);
-  border-color: #16a34a;
-  color: #04240f;
+  border-color: #0f5c37;
+  color: #fff;
 }
 button.danger {
   background: var(--danger);
-  border-color: #b91c1c;
+  border-color: #9b1f1f;
   color: #fff;
 }
 button.ghost {
@@ -332,20 +382,20 @@ a.small {
   margin-bottom: 0.25rem;
 }
 .banner-info {
-  background: #10203a;
-  border-color: #1e3a5f;
+  background: #e8eefb;
+  border-color: #b9c9ee;
 }
 .banner-success {
   background: var(--success-dim);
-  border-color: #166534;
+  border-color: #a8d8bd;
 }
 .banner-warning {
   background: var(--warning-dim);
-  border-color: #92400e;
+  border-color: #e5b300;
 }
 .banner-error {
   background: var(--danger-dim);
-  border-color: #991b1b;
+  border-color: #eeb0b0;
 }
 
 .pill {
@@ -358,19 +408,24 @@ a.small {
 }
 .pill-success {
   background: var(--success-dim);
-  color: #86efac;
+  color: #0f5c37;
 }
 .pill-warning {
   background: var(--warning-dim);
-  color: #fcd34d;
+  color: #7a5c00;
 }
 .pill-error {
   background: var(--danger-dim);
-  color: #fca5a5;
+  color: #9b1f1f;
 }
 .pill-muted {
   background: var(--surface-2);
   color: var(--muted);
+  border: 1px solid var(--border);
+}
+.pill-brand {
+  background: #e8eefb;
+  color: var(--brand-blue);
 }
 
 .flag-list {
@@ -383,7 +438,8 @@ a.small {
 }
 .flag {
   background: var(--warning-dim);
-  color: #fcd34d;
+  color: #7a5c00;
+  border: 1px solid #f0d98a;
   border-radius: 999px;
   padding: 0.15rem 0.6rem;
   font-size: 0.75rem;
@@ -416,6 +472,7 @@ a.small {
 .elapsed {
   font-size: 2.6rem;
   font-weight: 800;
+  color: var(--brand-blue);
   font-variant-numeric: tabular-nums;
   text-align: center;
   letter-spacing: -0.02em;
@@ -498,7 +555,7 @@ a.small {
 }
 
 .credential {
-  background: var(--surface-2);
+  background: #f7f9fd;
   border: 1px dashed var(--accent);
   border-radius: 10px;
   padding: 0.75rem;
@@ -516,7 +573,7 @@ a.small {
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(2, 6, 15, 0.7);
+  background: rgba(12, 25, 50, 0.55);
   display: flex;
   align-items: flex-end;
   justify-content: center;
@@ -581,6 +638,78 @@ a.small {
   .meter > span {
     transition: none;
   }
+}
+
+/* --- Worker change requests --------------------------------------------- */
+.edit-note {
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  padding: 0.6rem 0.75rem;
+  font-size: 0.9rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  align-items: flex-start;
+}
+.edit-note-pending {
+  background: #e8eefb;
+  border-color: #b9c9ee;
+}
+.edit-note-approved {
+  background: var(--success-dim);
+  border-color: #a8d8bd;
+}
+.edit-note-rejected {
+  background: var(--danger-dim);
+  border-color: #eeb0b0;
+}
+
+/* Recorded times beside the times a worker has asked for. */
+.compare {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 0.6rem;
+}
+.compare-side {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.6rem 0.75rem;
+}
+.compare-side .k {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  margin-bottom: 0.2rem;
+}
+.compare-side .v {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.compare-proposed {
+  background: #e8eefb;
+  border-color: var(--brand-blue);
+}
+.compare-arrow {
+  font-size: 1.3rem;
+  color: var(--muted);
+}
+
+/* --- Device readout ------------------------------------------------------ */
+.device-line {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+.device-line .device-name {
+  font-weight: 600;
+  color: var(--text);
 }
 
 /* --- Misc --------------------------------------------------------------- */

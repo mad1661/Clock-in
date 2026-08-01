@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { getDownloadURL, ref } from 'firebase/storage';
 import { storage } from '../firebase';
 import { fmtDateTime, fmtDistance, fmtDuration } from '../lib/format';
+import { shortDeviceId } from '../lib/device';
 import { FlagList } from './ui';
 import type { PunchRecord, Shift } from '../lib/types';
 
@@ -67,6 +68,14 @@ function PunchDetail({ label, punch }: { label: string; punch: PunchRecord }) {
         {punch.location && <span>±{Math.round(punch.location.accuracy)} m accuracy</span>}
       </div>
 
+      <div className="device-line">
+        <span aria-hidden="true">📱</span>
+        <span className="device-name">{punch.device?.label ?? 'Unknown device'}</span>
+        {shortDeviceId(punch.device?.id) && (
+          <span className="pill pill-muted">{shortDeviceId(punch.device?.id)}</span>
+        )}
+      </div>
+
       {punch.location && (
         <div className="row-meta">
           <a
@@ -89,16 +98,19 @@ function PunchDetail({ label, punch }: { label: string; punch: PunchRecord }) {
 
       <details>
         <summary className="hint" style={{ cursor: 'pointer' }}>
-          Device and network details
+          Full device and network details
         </summary>
         <div className="row-meta" style={{ marginTop: '0.4rem' }}>
           <span className="mono">IP {punch.ip ?? 'unknown'}</span>
-          {punch.device?.timezone ? <span>Timezone {String(punch.device.timezone)}</span> : null}
-          {punch.device?.platform ? <span>{String(punch.device.platform)}</span> : null}
+          {punch.device?.timezone && <span>Timezone {punch.device.timezone}</span>}
+          {punch.device?.platform && <span>Platform {punch.device.platform}</span>}
+          {punch.device?.screen && <span>Screen {punch.device.screen}</span>}
+          {punch.device?.language && <span>Language {punch.device.language}</span>}
         </div>
-        {punch.device?.userAgent ? (
-          <p className="mono hint">{String(punch.device.userAgent)}</p>
-        ) : null}
+        {punch.device?.id && (
+          <p className="mono hint">Device id {punch.device.id}</p>
+        )}
+        {punch.device?.userAgent && <p className="mono hint">{punch.device.userAgent}</p>}
       </details>
     </div>
   );

@@ -70,9 +70,10 @@ export default function Login() {
   return (
     <div className="centered">
       <div className="card" style={{ width: '100%', maxWidth: 400 }}>
-        <h1>⏱ Clock In</h1>
-        <p className="hint" style={{ marginBottom: '1rem' }}>
-          Sign in with the details your administrator gave you.
+        <img className="brand-mark" src="/coburn-logo.png" alt="Coburn Equipment Rentals" />
+        <h1 style={{ textAlign: 'center' }}>Time clock</h1>
+        <p className="hint" style={{ marginBottom: '1rem', textAlign: 'center' }}>
+          Sign in with the details your supervisor gave you.
         </p>
 
         {error && <Banner kind="error">{error}</Banner>}
