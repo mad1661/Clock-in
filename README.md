@@ -6,8 +6,20 @@ verification and a photo fallback when location services are not available.
 Built for a phone in daylight on a building site: one enormous button, no
 hover-only controls, and nothing important below the fold.
 
-**New here? Go to [SETUP.md](SETUP.md)** — it walks through creating the
-Firebase project and deploying, start to finish, in about fifteen minutes.
+**New here? Go to [SETUP.md](SETUP.md).** Five minutes in the Firebase console,
+then:
+
+```bash
+./deploy.sh
+```
+
+It reads your web app config out of the project, writes `web/.env`, builds
+everything and deploys the rules, indexes, functions and website. Re-run it any
+time; nothing it does is destructive.
+
+You will need the Firebase **Blaze** (pay-as-you-go) plan — Cloud Functions
+requires it, and so does Cloud Storage on any recently created project. Normal
+crew usage sits inside the free monthly allowance; SETUP.md explains.
 
 ---
 
@@ -206,17 +218,25 @@ web/src/
 ## Development
 
 ```bash
-npm --prefix functions install
-npm --prefix web install
-cp web/.env.example web/.env      # then fill it in
+npm run setup                     # installs both workspaces
+cp web/.env.example web/.env      # then fill it in, or run ./deploy.sh once
 
 # Terminal 1 — emulators (needs Java 11+)
-npm --prefix functions run build
-firebase emulators:start --project demo-clockin
+npm run build
+npm run emulators
 
 # Terminal 2 — the app
 npm --prefix web run dev          # with VITE_USE_EMULATORS=true in web/.env
 ```
+
+| Command | What it does |
+|---|---|
+| `./deploy.sh` | Guided deploy of everything |
+| `./deploy.sh --hosting-only` | Rebuild and push just the website |
+| `npm run build` | Compile the functions and build the site |
+| `npm run emulators` | Local Firebase emulator suite |
+| `npm test` | Server and security-rules suite |
+| `npm run test:ui` | Browser suite |
 
 ### Tests
 
@@ -224,8 +244,8 @@ Both suites run against a **freshly started** emulator suite — the emulators
 hold their data in memory, and both tests seed their own.
 
 ```bash
-npm --prefix web run test:api     # 96 checks: server logic and security rules
-npm --prefix web run test:ui      # 40 checks: browser flows via Playwright
+npm test              # 96 checks: server logic and security rules
+npm run test:ui       # 40 checks: browser flows via Playwright
 ```
 
 `test:api` covers the verification thresholds, the photo anti-replay checks,
