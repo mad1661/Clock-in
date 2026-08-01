@@ -59,6 +59,8 @@ This is where the proof-of-presence photos go. It needs Blaze from step 2.
 
 ## Part 2 — deploy
 
+### From a computer
+
 ```bash
 git clone <this repository>
 cd Clock-in
@@ -83,12 +85,60 @@ are most likely to hit on a fresh project:
 
 When it finishes you get a URL: `https://<project-id>.web.app`.
 
-### Later deploys
+### From your phone
+
+You do not need a laptop. **Google Cloud Shell** is a real Linux terminal in a
+browser tab, it already knows who you are, and the Firebase CLI is preinstalled.
+
+1. Open <https://shell.cloud.google.com> and let it start (about 30 seconds).
+2. Tap the terminal and run:
+   ```bash
+   git clone https://github.com/mad1661/Clock-in.git
+   cd Clock-in
+   ./deploy.sh
+   ```
+   The clone will ask you to authorise GitHub — a private repo needs it once.
+3. When it asks you to sign in to Firebase it prints a link and a code. Tap the
+   link, choose your Google account, copy the code it gives you, paste it back
+   into the terminal. The script detects Cloud Shell and uses the flow that
+   works without a desktop browser.
+4. Enter your project ID when prompted.
+
+Turn your phone sideways — the terminal is much easier to use in landscape.
+
+### Later deploys, from anywhere
 
 ```bash
 ./deploy.sh                 # everything
 ./deploy.sh --hosting-only  # just the website, when that is all you changed
 ```
+
+### Optional: deploy by tapping a button
+
+`.github/workflows/deploy.yml` lets you deploy from the GitHub mobile app —
+**Actions → Deploy → Run workflow**. Worth wiring up once you are making regular
+changes. It is fiddlier to set up than Cloud Shell and easier from a computer,
+because it involves handling a key file:
+
+1. Firebase console → **⚙ Project settings → Service accounts → Generate new
+   private key**. A `.json` file downloads.
+2. That key can only talk to the Admin SDK by default; it needs deploy rights.
+   Go to <https://console.cloud.google.com/iam-admin/iam>, find the
+   `firebase-adminsdk-…` account, edit it, and add these roles:
+   **Firebase Admin**, **Cloud Functions Admin**, **Service Account User**,
+   **Cloud Build Editor**, **Artifact Registry Administrator**.
+3. In GitHub → **Settings → Secrets and variables → Actions**:
+   - **New repository secret** named `FIREBASE_SERVICE_ACCOUNT` — paste the
+     entire contents of the JSON file, braces included.
+   - **Variables** tab → **New repository variable** named
+     `FIREBASE_PROJECT_ID` — your project id.
+
+> That key is a password to your Firebase project. Do not commit it, do not
+> email it to yourself, and delete the downloaded file once it is pasted in.
+> If it ever leaks, revoke it under Service accounts → Manage keys.
+
+If you already have a computer handy, `firebase init hosting:github` sets all of
+this up for you, correctly scoped, in one command.
 
 ---
 

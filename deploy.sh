@@ -39,7 +39,14 @@ step "Checking your tools"
 
 command -v node >/dev/null 2>&1 || die "Node.js is not installed. Get it from https://nodejs.org (version 20 or newer)."
 NODE_MAJOR="$(node -p 'process.versions.node.split(".")[0]')"
-[ "$NODE_MAJOR" -ge 20 ] || die "Node.js $NODE_MAJOR is too old. Install version 20 or newer from https://nodejs.org."
+if [ "$NODE_MAJOR" -lt 20 ]; then
+  if [ -n "${CLOUD_SHELL:-}" ] || [ -n "${DEVSHELL_PROJECT_ID:-}" ]; then
+    die "Node.js $NODE_MAJOR is too old. In Cloud Shell, run:
+    nvm install 22 && nvm use 22
+  then re-run ./deploy.sh"
+  fi
+  die "Node.js $NODE_MAJOR is too old. Install version 20 or newer from https://nodejs.org."
+fi
 ok "Node.js $(node -v)"
 
 if ! command -v firebase >/dev/null 2>&1; then
@@ -49,14 +56,25 @@ if ! command -v firebase >/dev/null 2>&1; then
 fi
 ok "Firebase CLI $(firebase --version)"
 
+IN_CLOUD_SHELL=false
+[ -n "${CLOUD_SHELL:-}" ] || [ -n "${DEVSHELL_PROJECT_ID:-}" ] && IN_CLOUD_SHELL=true
+[ "$IN_CLOUD_SHELL" = true ] && ok "Running in Google Cloud Shell"
+
 if [ -n "${FIREBASE_TOKEN:-}" ] || [ -n "${GOOGLE_APPLICATION_CREDENTIALS:-}" ]; then
   ok "Using Firebase credentials from the environment"
 elif firebase login:list 2>/dev/null | grep -qi 'logged in as'; then
   ok "Signed in to Firebase"
 else
   step "Signing in to Firebase"
-  info "A browser window will open. Sign in with the Google account that owns the project."
-  firebase login || die "Sign-in failed. Run 'firebase login' by hand and try again."
+  if [ "$IN_CLOUD_SHELL" = true ]; then
+    # Cloud Shell cannot open a callback on localhost; this prints a link to
+    # tap and a code to paste back, which works on a phone.
+    info "Tap the link that appears, pick your Google account, then paste the code back here."
+    firebase login --no-localhost || die "Sign-in failed. Run 'firebase login --no-localhost' by hand and try again."
+  else
+    info "A browser window will open. Sign in with the Google account that owns the project."
+    firebase login || die "Sign-in failed. Run 'firebase login' by hand and try again."
+  fi
   ok "Signed in to Firebase"
 fi
 

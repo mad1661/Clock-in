@@ -17,6 +17,10 @@ It reads your web app config out of the project, writes `web/.env`, builds
 everything and deploys the rules, indexes, functions and website. Re-run it any
 time; nothing it does is destructive.
 
+No computer to hand? Run the same command in
+[Google Cloud Shell](https://shell.cloud.google.com) from a phone browser — it
+is already signed in to your Google account and the script handles the rest.
+
 You will need the Firebase **Blaze** (pay-as-you-go) plan — Cloud Functions
 requires it, and so does Cloud Storage on any recently created project. Normal
 crew usage sits inside the free monthly allowance; SETUP.md explains.
