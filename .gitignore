@@ -1,0 +1,18 @@
+node_modules/
+dist/
+lib/
+*.local
+.env
+.env.*
+!.env.example
+# Emulator-only overrides; the Firebase CLI never deploys these.
+!functions/.env.local
+.firebase/
+.firebaserc
+firebase-debug.log*
+firestore-debug.log*
+ui-debug.log*
+*.log
+.DS_Store
+serviceAccountKey.json
+coverage/

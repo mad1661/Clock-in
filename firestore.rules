@@ -1,0 +1,81 @@
+rules_version = '2';
+
+// ---------------------------------------------------------------------------
+// Clock-in / Clock-out — Firestore security rules
+//
+// Design principle: the client NEVER writes. Every mutation (creating workers,
+// clocking in/out, editing timesheets) goes through a Cloud Function that runs
+// with the Admin SDK, which bypasses these rules. That means a worker cannot
+// forge a shift, backdate a timestamp, or flip their own `needsReview` flag
+// even with a patched client or a raw REST call.
+//
+// These rules therefore only ever grant READ access, scoped as tightly as the
+// data model allows.
+// ---------------------------------------------------------------------------
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    // Role lives in a custom claim, set server-side by the admin functions.
+    // Claims are signed by Firebase Auth and cannot be spoofed by the client.
+    function isAdmin() {
+      return signedIn() && request.auth.token.role == 'admin';
+    }
+
+    function isActive() {
+      return signedIn() && request.auth.token.active == true;
+    }
+
+    function isSelf(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
+
+    // --- User directory -----------------------------------------------------
+    // A worker can read their own profile. Admins can read the whole roster.
+    match /users/{uid} {
+      allow get: if isSelf(uid) || isAdmin();
+      allow list: if isAdmin();
+      allow write: if false; // functions only
+    }
+
+    // --- Job sites ----------------------------------------------------------
+    // Any active signed-in user can read job sites; the clock screen needs the
+    // coordinates to show "you are 40 m from the site" before submitting.
+    // Note: geofence enforcement is server-side, so exposing radii is not a
+    // security boundary — it is just UX.
+    match /jobSites/{siteId} {
+      allow read: if isActive() || isAdmin();
+      allow write: if false; // functions only
+    }
+
+    // --- Shifts (the timesheet record) --------------------------------------
+    match /shifts/{shiftId} {
+      // One `read` rule covering both `get` and `list`, and it must reference
+      // `resource.data` in the non-admin branch. Rules are not filters: for a
+      // list query Firestore evaluates this against every document the query
+      // would return and fails the whole query if any one is denied. So a
+      // worker querying `userId == theirOwnUid` succeeds, and any broader query
+      // — including an unfiltered read of the collection — is rejected outright.
+      // Splitting `list` out into a bare `signedIn()` check would hand every
+      // worker the entire company's timesheet.
+      allow read: if isAdmin() || (signedIn() && resource.data.userId == request.auth.uid);
+      allow write: if false; // functions only
+    }
+
+    // --- Audit log ----------------------------------------------------------
+    // Append-only from functions; readable by admins for investigations.
+    match /auditLogs/{logId} {
+      allow read: if isAdmin();
+      allow write: if false; // functions only
+    }
+
+    // --- Anything else ------------------------------------------------------
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -1,0 +1,642 @@
+/* -------------------------------------------------------------------------
+   Mobile-first. The clock screen is used outdoors, one-handed, in gloves, on a
+   phone in daylight — so: large tap targets, high contrast, no hover-only
+   affordances, and nothing important below the fold.
+   ------------------------------------------------------------------------- */
+
+:root {
+  --bg: #0b1220;
+  --surface: #131c2e;
+  --surface-2: #1b263c;
+  --border: #2a374f;
+  --text: #e8eef8;
+  --muted: #93a4bf;
+  --accent: #3b82f6;
+  --accent-strong: #2563eb;
+  --success: #22c55e;
+  --success-dim: #14532d;
+  --warning: #f59e0b;
+  --warning-dim: #4a2f05;
+  --danger: #ef4444;
+  --danger-dim: #4c1111;
+  --radius: 14px;
+  --shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
+    sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -webkit-text-size-adjust: 100%;
+}
+
+h1,
+h2,
+h3 {
+  margin: 0 0 0.5rem;
+  line-height: 1.25;
+}
+h1 {
+  font-size: 1.4rem;
+}
+h2 {
+  font-size: 1.1rem;
+}
+
+a {
+  color: var(--accent);
+}
+
+/* --- Layout ------------------------------------------------------------- */
+.app {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  padding-top: calc(0.75rem + env(safe-area-inset-top));
+  background: rgba(11, 18, 32, 0.92);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--border);
+}
+
+.topbar .brand {
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  margin-right: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.topbar .who {
+  font-size: 0.8rem;
+  color: var(--muted);
+  text-align: right;
+  max-width: 45vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nav {
+  display: flex;
+  gap: 0.25rem;
+  padding: 0.5rem 1rem;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  scrollbar-width: none;
+}
+.nav::-webkit-scrollbar {
+  display: none;
+}
+
+.nav a {
+  flex: 0 0 auto;
+  padding: 0.5rem 0.9rem;
+  border-radius: 999px;
+  color: var(--muted);
+  text-decoration: none;
+  font-size: 0.9rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.nav a.active {
+  background: var(--accent);
+  color: #fff;
+}
+
+main {
+  flex: 1;
+  width: 100%;
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.centered {
+  min-height: 100%;
+  display: grid;
+  place-items: center;
+  padding: 1.5rem;
+}
+
+/* --- Cards -------------------------------------------------------------- */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem;
+}
+
+.card-head {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+  flex-wrap: wrap;
+}
+.card-head h2 {
+  margin: 0;
+  margin-right: auto;
+}
+.card-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+/* --- Forms -------------------------------------------------------------- */
+label {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--muted);
+  margin-bottom: 0.3rem;
+}
+
+input,
+select,
+textarea {
+  width: 100%;
+  padding: 0.8rem 0.9rem;
+  font-size: 1rem;
+  font-family: inherit;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  min-height: 48px;
+}
+
+textarea {
+  min-height: 88px;
+  resize: vertical;
+}
+
+input:focus,
+select:focus,
+textarea:focus,
+button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.field {
+  margin-bottom: 0.9rem;
+}
+
+.field-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+
+.hint {
+  font-size: 0.8rem;
+  color: var(--muted);
+  margin-top: 0.3rem;
+}
+
+/* --- Buttons ------------------------------------------------------------ */
+button {
+  font-family: inherit;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.75rem 1rem;
+  min-height: 48px;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+button.primary {
+  background: var(--accent);
+  border-color: var(--accent-strong);
+  color: #fff;
+}
+button.success {
+  background: var(--success);
+  border-color: #16a34a;
+  color: #04240f;
+}
+button.danger {
+  background: var(--danger);
+  border-color: #b91c1c;
+  color: #fff;
+}
+button.ghost {
+  background: transparent;
+}
+button.small {
+  min-height: 38px;
+  padding: 0.4rem 0.7rem;
+  font-size: 0.85rem;
+}
+button.block {
+  width: 100%;
+}
+
+/* Links that sit in a row of buttons should read as one of them. */
+a.small {
+  display: inline-flex;
+  align-items: center;
+  min-height: 38px;
+  padding: 0.4rem 0.7rem;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text);
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.icon-btn {
+  min-height: 36px;
+  min-width: 36px;
+  padding: 0;
+  font-size: 1.4rem;
+  line-height: 1;
+  background: transparent;
+  border: none;
+}
+
+/* The main action. Deliberately enormous — it is the only thing most workers
+   will ever tap in this app. */
+.clock-btn {
+  width: 100%;
+  min-height: 132px;
+  font-size: 1.5rem;
+  letter-spacing: 0.01em;
+  border-radius: 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  box-shadow: var(--shadow);
+}
+.clock-btn .sub {
+  font-size: 0.85rem;
+  font-weight: 500;
+  opacity: 0.9;
+}
+
+/* --- Banners & pills ---------------------------------------------------- */
+.banner {
+  border-radius: 12px;
+  padding: 0.8rem 0.9rem;
+  border: 1px solid;
+  font-size: 0.92rem;
+}
+.banner-title {
+  display: block;
+  margin-bottom: 0.25rem;
+}
+.banner-info {
+  background: #10203a;
+  border-color: #1e3a5f;
+}
+.banner-success {
+  background: var(--success-dim);
+  border-color: #166534;
+}
+.banner-warning {
+  background: var(--warning-dim);
+  border-color: #92400e;
+}
+.banner-error {
+  background: var(--danger-dim);
+  border-color: #991b1b;
+}
+
+.pill {
+  display: inline-block;
+  padding: 0.15rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.pill-success {
+  background: var(--success-dim);
+  color: #86efac;
+}
+.pill-warning {
+  background: var(--warning-dim);
+  color: #fcd34d;
+}
+.pill-error {
+  background: var(--danger-dim);
+  color: #fca5a5;
+}
+.pill-muted {
+  background: var(--surface-2);
+  color: var(--muted);
+}
+
+.flag-list {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+.flag {
+  background: var(--warning-dim);
+  color: #fcd34d;
+  border-radius: 999px;
+  padding: 0.15rem 0.6rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+/* --- Status readout ----------------------------------------------------- */
+.status-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 0.6rem;
+}
+.stat {
+  background: var(--surface-2);
+  border-radius: 10px;
+  padding: 0.6rem 0.75rem;
+}
+.stat .k {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+.stat .v {
+  font-size: 1.05rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.elapsed {
+  font-size: 2.6rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  letter-spacing: -0.02em;
+}
+
+/* --- Accuracy meter ----------------------------------------------------- */
+.meter {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  overflow: hidden;
+  margin-top: 0.5rem;
+}
+.meter > span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.4s ease;
+}
+.meter.good > span {
+  background: var(--success);
+}
+.meter.bad > span {
+  background: var(--warning);
+}
+
+/* --- Lists & tables ----------------------------------------------------- */
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.row {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 0.8rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.row-head {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+.row-head .title {
+  font-weight: 700;
+  margin-right: auto;
+}
+.row-meta {
+  font-size: 0.85rem;
+  color: var(--muted);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.9rem;
+}
+.row-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-top: 0.2rem;
+}
+
+.empty {
+  color: var(--muted);
+  text-align: center;
+  padding: 1.5rem 0;
+}
+
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.9rem;
+  word-break: break-all;
+}
+
+.credential {
+  background: var(--surface-2);
+  border: 1px dashed var(--accent);
+  border-radius: 10px;
+  padding: 0.75rem;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+.credential .mono {
+  flex: 1;
+  font-size: 1.05rem;
+  letter-spacing: 0.04em;
+}
+
+/* --- Modal -------------------------------------------------------------- */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(2, 6, 15, 0.7);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  z-index: 50;
+  padding: 0;
+}
+.modal {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 18px 18px 0 0;
+  width: 100%;
+  max-width: 560px;
+  max-height: 92vh;
+  overflow-y: auto;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.modal-head {
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 1rem;
+  border-bottom: 1px solid var(--border);
+}
+.modal-head h2 {
+  margin: 0;
+  margin-right: auto;
+}
+.modal-body {
+  padding: 1rem;
+}
+
+/* --- Spinner ------------------------------------------------------------ */
+.spinner-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  padding: 1rem;
+  color: var(--muted);
+}
+.spinner {
+  width: 20px;
+  height: 20px;
+  border: 3px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation-duration: 2.4s;
+  }
+  .meter > span {
+    transition: none;
+  }
+}
+
+/* --- Misc --------------------------------------------------------------- */
+.steps {
+  margin: 0.5rem 0 0;
+  padding-left: 1.2rem;
+  font-size: 0.9rem;
+}
+.steps li {
+  margin-bottom: 0.35rem;
+}
+
+.photo-preview {
+  width: 100%;
+  max-height: 260px;
+  object-fit: cover;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  display: block;
+}
+
+.filters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0.6rem;
+}
+
+.totals {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+.totals strong {
+  color: var(--text);
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+@media (min-width: 640px) {
+  h1 {
+    font-size: 1.6rem;
+  }
+  .modal-backdrop {
+    align-items: center;
+    padding: 1rem;
+  }
+  .modal {
+    border-radius: 18px;
+  }
+}

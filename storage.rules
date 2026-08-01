@@ -1,0 +1,42 @@
+rules_version = '2';
+
+// ---------------------------------------------------------------------------
+// Clock-in / Clock-out — Cloud Storage security rules
+//
+// Workers upload a proof-of-presence photo ONLY when location services are
+// unavailable. The upload happens before the clockIn/clockOut callable runs;
+// the function then verifies server-side that the object exists, is an image,
+// is within the size cap, and was created seconds ago (not a stale re-upload).
+//
+// A worker may write to their own prefix but may never read, overwrite, or
+// delete anything — once a photo backs a shift it is evidence.
+// ---------------------------------------------------------------------------
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function isAdmin() {
+      return request.auth != null && request.auth.token.role == 'admin';
+    }
+
+    match /clock-photos/{uid}/{fileName} {
+      // Admins review the photos attached to flagged shifts.
+      allow read: if isAdmin();
+
+      // Create-only: `resource == null` means the object does not exist yet, so
+      // this permits the first write and denies overwrites of an existing photo.
+      allow create: if request.auth != null
+                    && request.auth.uid == uid
+                    && request.auth.token.active == true
+                    && resource == null
+                    && request.resource.size < 8 * 1024 * 1024
+                    && request.resource.contentType.matches('image/(jpeg|png|webp|heic|heif)');
+
+      allow update, delete: if false;
+    }
+
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
