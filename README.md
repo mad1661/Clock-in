@@ -39,6 +39,9 @@ crew usage sits inside the free monthly allowance; SETUP.md explains.
   job site. **The punch is still recorded**; it goes to the administrator for
   approval rather than being lost.
 - A live timer while on shift, and their own timesheet.
+- **No signal? The punch is not lost.** It is saved on the phone and sent in on
+  its own the moment a connection returns — the worker can close the app.
+- Installs to the home screen and opens without a connection.
 - If something is wrong — forgot to clock out, phone died — they can propose
   corrected times with a reason. **They cannot change their own hours**: the
   request goes to a supervisor and nothing moves until it is approved.
@@ -60,6 +63,9 @@ crew usage sits inside the free monthly allowance; SETUP.md explains.
   times apply; turn it down with a note the worker sees on their timesheet.
 - See which handset each punch was made on, and get flagged when two workers
   punch from the same one.
+- A live **On site** board: who is clocked in, at which site, for how long.
+- California overtime worked out per week, including the daily rules — four
+  ten-hour days is 8 hours of overtime even though the week totals 40.
 
 ---
 
@@ -158,6 +164,34 @@ shift, and changes nothing until a supervisor rules on it:
 If workers could edit their own hours directly, every other check in this app
 would be decoration. This is the reason the feature is shaped the way it is.
 
+### Working where there is no signal
+
+A crew in a basement, a canyon, or a steel-framed building has no data
+connection. Losing a day's hours to that is the most likely way this app fails
+a real worker, so a punch that cannot be submitted is written to IndexedDB —
+including the photo, as a blob — and replayed when signal returns. The worker
+sees "saved on this phone" and can close the app; the queue drains on the next
+launch or the moment the browser reports it is back online. A service worker
+caches the app shell so it opens at all with no connection.
+
+The honest cost: a synced punch carries a timestamp from the phone, and the
+phone's clock is the one thing this app otherwise never trusts. So it is
+bounded — refused if dated in the future or more than 24 hours old — and every
+single one is flagged `OFFLINE_SYNCED` for a supervisor. Freshness checks on
+the GPS fix are measured against when the punch was captured rather than when
+it arrived, so an honest offline punch is not also punished for being stale.
+
+Each queued punch carries a client-generated request id, burnt server-side on
+first use. The failure this prevents is mundane and certain: the phone submits,
+the response is lost on a flaky connection, the queue retries, and payroll gets
+two shifts. A replay now gets a clean "already submitted" answer with the shift
+id, checked before any other state, so the queue can drop it without alarming
+anyone.
+
+Only a request that never got an answer is queued. A punch the server actually
+refused — outside the geofence, say — is never retried behind the worker's
+back.
+
 ### Everything ends up in front of a human
 
 Anything unverified is flagged, never silently accepted and never silently
@@ -206,6 +240,10 @@ web/src/
   lib/geolocation.ts     Best-fix acquisition, failure classification
   lib/photo.ts           Capture, downscale, upload
   lib/device.ts          Per-install device id
+  lib/offlineQueue.ts    IndexedDB queue for punches made with no signal
+  lib/syncQueue.ts       Drains the queue when the connection returns
+  lib/overtime.ts        California daily and weekly overtime
+  pages/admin/OnSiteNow.tsx  Live board of who is clocked in
   auth/AuthProvider.tsx  Session, live profile, claim refresh
 ```
 
@@ -248,16 +286,19 @@ Both suites run against a **freshly started** emulator suite — the emulators
 hold their data in memory, and both tests seed their own.
 
 ```bash
-npm test              # 96 checks: server logic and security rules
-npm run test:ui       # 40 checks: browser flows via Playwright
+npm test                             # 109 checks: server logic and security rules
+npm run test:ui                      # 47 checks: browser flows via Playwright
+npm --prefix web run test:overtime   # 10 checks: California overtime, no emulator needed
 ```
 
 `test:api` covers the verification thresholds, the photo anti-replay checks,
 device identification and the shared-handset flag, the correction-request rules
-(including that a worker cannot approve their own), privilege escalation
-attempts, and the security rules. `test:ui` drives a real Chromium with mocked
-geolocation through the on-site, off-site and permission-denied paths, the
-request-and-approve correction flow, and the admin console.
+(including that a worker cannot approve their own), the offline replay bounds
+and idempotency, privilege escalation attempts, and the security rules.
+`test:ui` drives a real Chromium with mocked geolocation through the on-site,
+off-site and permission-denied paths, the request-and-approve correction flow,
+a punch made with the network genuinely cut and then restored, and the admin
+console.
 
 `test:ui` needs `web/.env` filled in with `VITE_USE_EMULATORS=true`, and reads
 the built app from the hosting emulator on port 5000 — so run

@@ -236,7 +236,26 @@ than 16 hours, records it as zero minutes, and queues it for review. Fix it with
 **Timesheets → Adjust times**; a reason is required and the edit is audited
 against your name.
 
-**Payroll.** Timesheets → set the dates → **Export CSV**.
+**Who is on site right now?** The **On site** tab. Live — a clock-in shows up
+within a second — grouped by job site, with a running timer per worker and a
+warning on anyone past ten hours who has probably forgotten to clock out.
+
+**Payroll.** Timesheets → set the dates → **Export CSV**. The export includes a
+California overtime summary per worker (regular / 1.5x / 2x), worked out week by
+week using the daily rules — four ten-hour days is 8 hours of overtime even
+though the week totals 40. Treat it as a cross-check against whoever runs your
+payroll, not as a payroll calculation: it does not know about alternative
+workweek agreements, exempt staff, or meal-period premiums.
+
+**A punch is flagged "Saved offline, synced later".** The worker was somewhere
+with no signal. The app held the punch on their phone and sent it in when the
+connection came back, so its time came from the phone rather than the server.
+That is why it needs your sign-off. Anything over 24 hours old is refused
+outright and has to be added by hand.
+
+**Tell the crew to install it.** On the site, tap Share → Add to Home Screen
+(iPhone) or the install prompt (Android). It then opens like an app, and opens
+even with no connection.
 
 ## Tuning
 

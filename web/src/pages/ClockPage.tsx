@@ -11,6 +11,8 @@ import {
 } from '../lib/geolocation';
 import { preparePhoto, uploadPhoto, type PreparedPhoto } from '../lib/photo';
 import { describeDevice } from '../lib/device';
+import { enqueue, isOfflineError, newPunchId, queueSize } from '../lib/offlineQueue';
+import { syncPendingPunches } from '../lib/syncQueue';
 import { api, errorMessage, photoRequiredDetail, toLocationError, type ClockResult } from '../lib/api';
 import { distanceMeters, POLICY } from '../lib/policy';
 import { fmtDistance, fmtDateTime, elapsedSince } from '../lib/format';
@@ -37,6 +39,8 @@ export default function ClockPage() {
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<ClockResult | null>(null);
   const [now, setNow] = useState(() => Date.now());
+  const [pendingCount, setPendingCount] = useState(0);
+  const [syncNote, setSyncNote] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -98,6 +102,33 @@ export default function ClockPage() {
     if (selectedSiteId) window.localStorage.setItem('lastJobSiteId', selectedSiteId);
   }, [selectedSiteId]);
 
+  const drainQueue = useCallback(async () => {
+    if (!user) return;
+    const result = await syncPendingPunches(user.uid);
+    setPendingCount(result.remaining);
+    if (result.synced > 0) {
+      setSyncNote(
+        `${result.synced} punch${result.synced === 1 ? '' : 'es'} saved on your phone ${
+          result.synced === 1 ? 'has' : 'have'
+        } now been sent in.`,
+      );
+    }
+    if (result.failed.length > 0) {
+      setError(
+        `A saved punch could not be accepted: ${result.failed[0].message} Tell your supervisor so they can add the hours.`,
+      );
+    }
+  }, [user]);
+
+  useEffect(() => {
+    void queueSize().then(setPendingCount);
+    void drainQueue();
+
+    const onOnline = () => void drainQueue();
+    window.addEventListener('online', onOnline);
+    return () => window.removeEventListener('online', onOnline);
+  }, [drainQueue]);
+
   useEffect(() => () => abortRef.current?.abort(), []);
   useEffect(() => {
     return () => {
@@ -131,6 +162,36 @@ export default function ClockPage() {
     if (fileInputRef.current) fileInputRef.current.value = '';
   }, [photo]);
 
+  const saveForLater = useCallback(
+    async (opts: { location: LocationFix | null; failure: LocationFailure | null }) => {
+      await enqueue({
+        id: newPunchId(),
+        action: openShift ? 'out' : 'in',
+        jobSiteId: openShift?.jobSiteId ?? selectedSiteId,
+        jobSiteName: activeSite?.name ?? 'this job site',
+        // The phone's clock. The server bounds it to 24 hours, refuses future
+        // dates, and flags every synced punch for a supervisor to confirm.
+        capturedAt: Date.now(),
+        location: opts.location,
+        locationError: opts.failure ? toLocationError(opts.failure) : null,
+        // Keep the blob, not the uploaded path: with no signal the upload
+        // cannot have happened, so the photo travels with the punch.
+        photo: photo?.blob ?? null,
+        device: describeDevice(),
+        attempts: 0,
+        lastError: null,
+      });
+      setPendingCount(await queueSize());
+      reset();
+      setPhase('idle');
+      setResult(null);
+      setSyncNote(
+        'No signal — your punch is saved on this phone and will be sent in automatically as soon as you have a connection. You can close the app.',
+      );
+    },
+    [openShift, selectedSiteId, activeSite, photo, reset],
+  );
+
   const submit = useCallback(
     async (opts: { location: LocationFix | null; failure: LocationFailure | null; photoPath: string | null }) => {
       const jobSiteId = openShift?.jobSiteId ?? selectedSiteId;
@@ -148,8 +209,15 @@ export default function ClockPage() {
         setResult(res);
         reset();
         setPhase('idle');
+        void drainQueue();
         return true;
       } catch (err) {
+        // No answer from the server is not the same as the server saying no.
+        // Hold the punch on the phone rather than making the worker lose it.
+        if (isOfflineError(err)) {
+          await saveForLater({ location: opts.location, failure: opts.failure });
+          return true;
+        }
         const detail = photoRequiredDetail(err);
         if (detail) {
           // Not a failure — the server is telling us the punch needs a photo.
@@ -164,7 +232,7 @@ export default function ClockPage() {
         return false;
       }
     },
-    [isClockedIn, openShift?.jobSiteId, selectedSiteId, reset],
+    [isClockedIn, openShift?.jobSiteId, selectedSiteId, reset, drainQueue, saveForLater],
   );
 
   const start = useCallback(async () => {
@@ -174,6 +242,7 @@ export default function ClockPage() {
     }
     reset();
     setResult(null);
+    setSyncNote(null);
     setPhase('locating');
 
     const controller = new AbortController();
@@ -245,6 +314,15 @@ export default function ClockPage() {
 
   return (
     <>
+      {pendingCount > 0 && (
+        <Banner kind="warning" title="Saved on this phone">
+          {pendingCount} punch{pendingCount === 1 ? '' : 'es'} waiting to be sent in. This happens
+          automatically when you have a signal — you do not need to keep the app open.
+        </Banner>
+      )}
+
+      {syncNote && <Banner kind="info">{syncNote}</Banner>}
+
       {profile?.mustChangePassword && (
         <Banner kind="warning" title="You are still on a temporary password">
           Open the <strong>Account</strong> tab and set a password only you know.

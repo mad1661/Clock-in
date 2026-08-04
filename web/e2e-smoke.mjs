@@ -695,6 +695,134 @@ async function main() {
     }),
   );
 
+
+  console.log('\n=== 22. Offline punches ===');
+  const flo = await mk('flo@example.com', 'Flo Marsh');
+  const floC = newClient('flo');
+  await signInWithEmailAndPassword(floC.auth, flo.email, flo.temporaryPassword);
+  const floUid = floC.auth.currentUser.uid;
+
+  const siteOffline = (
+    await admin.call('upsertJobSite')({
+      name: 'Basement Job',
+      address: '',
+      lat: SITE.lat,
+      lng: SITE.lng,
+      radiusMeters: 150,
+      active: true,
+    })
+  ).data.id;
+
+  // A punch captured three hours ago, on site, replayed now.
+  const capturedAt = Date.now() - 6 * 3600_000;
+  const offlineIn = await floC.call('clockIn')({
+    jobSiteId: siteOffline,
+    location: { ...north(SITE, 30), accuracy: 12, capturedAt },
+    offlineCapturedAt: capturedAt,
+    clientRequestId: 'offline-req-000001',
+    device: floC.device,
+  });
+  check('an offline punch is accepted', offlineIn.data.method === 'gps', JSON.stringify(offlineIn.data));
+  check(
+    'it is flagged as synced from offline',
+    offlineIn.data.flags.includes('OFFLINE_SYNCED'),
+    JSON.stringify(offlineIn.data.flags),
+  );
+  check('it needs review', offlineIn.data.needsReview === true);
+  check(
+    'its GPS fix is not treated as stale',
+    !offlineIn.data.flags.includes('STALE_FIX'),
+    JSON.stringify(offlineIn.data.flags),
+  );
+
+  const floShift = (
+    await getDocs(query(collection(admin.db, 'shifts'), where('userId', '==', floUid)))
+  ).docs[0].data();
+  check(
+    'the recorded time is when it was captured, not when it synced',
+    Math.abs(floShift.clockInAt.toMillis() - capturedAt) < 2000,
+    `off by ${Math.round((floShift.clockInAt.toMillis() - capturedAt) / 1000)}s`,
+  );
+  check('the sync delay is recorded', floShift.clockIn.offline?.delayMinutes >= 359);
+
+  console.log('\n=== 23. A retried sync cannot punch twice ===');
+  const replay = await expectFailure(
+    floC.call('clockIn')({
+      jobSiteId: siteOffline,
+      location: { ...north(SITE, 30), accuracy: 12, capturedAt },
+      offlineCapturedAt: capturedAt,
+      clientRequestId: 'offline-req-000001',
+      device: floC.device,
+    }),
+  );
+  check('the same request id is refused', replay !== null, 'duplicate punch created!');
+  check(
+    'the client is told it was already submitted',
+    replay?.details?.reason === 'ALREADY_SUBMITTED',
+    JSON.stringify(replay?.details),
+  );
+  check(
+    'and is told which shift it became',
+    typeof replay?.details?.shiftId === 'string',
+    JSON.stringify(replay?.details),
+  );
+
+  console.log('\n=== 24. Offline timestamps are bounded ===');
+  const futureOffline = await expectFailure(
+    floC.call('clockOut')({
+      jobSiteId: siteOffline,
+      location: { ...north(SITE, 30), accuracy: 12, capturedAt: Date.now() },
+      offlineCapturedAt: Date.now() + 6 * 3600_000,
+      clientRequestId: 'offline-req-future',
+      device: floC.device,
+    }),
+  );
+  check('a future capture time is refused', futureOffline !== null, 'accepted a future punch!');
+
+  const ancientOffline = await expectFailure(
+    floC.call('clockOut')({
+      jobSiteId: siteOffline,
+      location: { ...north(SITE, 30), accuracy: 12, capturedAt: Date.now() },
+      offlineCapturedAt: Date.now() - 5 * 86400_000,
+      clientRequestId: 'offline-req-ancient',
+      device: floC.device,
+    }),
+  );
+  check('a capture time older than a day is refused', ancientOffline !== null, 'accepted a stale punch!');
+
+  const junkOffline = await expectFailure(
+    floC.call('clockOut')({
+      jobSiteId: siteOffline,
+      location: { ...north(SITE, 30), accuracy: 12, capturedAt: Date.now() },
+      offlineCapturedAt: 'yesterday',
+      clientRequestId: 'offline-req-junk',
+      device: floC.device,
+    }),
+  );
+  check('a non-numeric capture time is refused', junkOffline !== null);
+
+  console.log('\n=== 25. Offline clock-out closes the shift at the right time ===');
+  const outAt = capturedAt + 4 * 3600_000;
+  const offlineOut = await floC.call('clockOut')({
+    jobSiteId: siteOffline,
+    location: { ...north(SITE, 30), accuracy: 12, capturedAt: outAt },
+    offlineCapturedAt: outAt,
+    clientRequestId: 'offline-req-000002',
+    device: floC.device,
+  });
+  check(
+    'duration comes from the captured times, not the sync times',
+    offlineOut.data.durationMinutes === 240,
+    `got ${offlineOut.data.durationMinutes}`,
+  );
+
+  await Promise.all(
+    [floC].map(async (c) => {
+      await signOut(c.auth).catch(() => {});
+      await deleteApp(c.app);
+    }),
+  );
+
   await Promise.all(
     [admin, samC, aliC, joC, kimC].map(async (c) => {
       await signOut(c.auth).catch(() => {});

@@ -22,6 +22,7 @@ import {
   localDateTimeInput,
 } from '../../lib/format';
 import { shortDeviceId } from '../../lib/device';
+import { overtimeByWorker } from '../../lib/overtime';
 import type { Shift, UserDoc } from '../../lib/types';
 
 const PAGE_SIZE = 300;
@@ -77,6 +78,8 @@ export default function Timesheets() {
       });
   }, [from, to, userId, editing]);
 
+  const overtime = useMemo(() => overtimeByWorker(shifts ?? []), [shifts]);
+
   const totals = useMemo(() => {
     const list = shifts ?? [];
     return {
@@ -109,6 +112,7 @@ export default function Timesheets() {
         'Flags',
         'Review note',
         'Pending change',
+        'Offline sync delay (min)',
       ],
       ...(shifts ?? []).map((s) => [
         s.userDisplayName,
@@ -131,6 +135,17 @@ export default function Timesheets() {
         s.flags.join(' | '),
         s.review.note ?? '',
         s.hasPendingEdit ? 'yes' : '',
+        s.clockIn.offline ? String(s.clockIn.offline.delayMinutes) : '',
+      ]),
+      [],
+      ['California overtime summary — cross-check against payroll, not a payroll calculation'],
+      ['Worker', 'Regular hours', 'Overtime (1.5x)', 'Double time (2x)', 'Total hours'],
+      ...overtime.map((w) => [
+        w.displayName,
+        w.split.regularHours.toFixed(2),
+        w.split.overtimeHours.toFixed(2),
+        w.split.doubleTimeHours.toFixed(2),
+        w.split.totalHours.toFixed(2),
       ]),
     ];
 
@@ -223,6 +238,40 @@ export default function Timesheets() {
           </button>
         </div>
       </Card>
+
+      {overtime.length > 0 && (
+        <Card title="California overtime">
+          <p className="hint" style={{ marginTop: 0 }}>
+            Split week by week using California's daily rules — over 8 hours in a day is overtime
+            even when the week totals 40. A cross-check for payroll, not a payroll calculation:
+            it does not know about alternative workweek agreements, exempt staff or meal premiums.
+          </p>
+          <ul className="list">
+            {overtime.map((w) => (
+              <li key={w.userId} className="row">
+                <div className="row-head">
+                  <span className="title">{w.displayName}</span>
+                  <span className="pill pill-muted">{w.split.totalHours.toFixed(2)} h</span>
+                </div>
+                <div className="status-grid">
+                  <div className="stat">
+                    <div className="k">Regular</div>
+                    <div className="v">{w.split.regularHours.toFixed(2)}</div>
+                  </div>
+                  <div className="stat">
+                    <div className="k">Overtime 1.5&times;</div>
+                    <div className="v">{w.split.overtimeHours.toFixed(2)}</div>
+                  </div>
+                  <div className="stat">
+                    <div className="k">Double 2&times;</div>
+                    <div className="v">{w.split.doubleTimeHours.toFixed(2)}</div>
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
 
       {!shifts ? (
         <Spinner label="Loading shifts…" />

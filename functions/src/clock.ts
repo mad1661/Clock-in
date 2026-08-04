@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { onCall, HttpsError, type CallableRequest } from 'firebase-functions/v2/https';
 import { FieldValue, Timestamp } from 'firebase-admin/firestore';
 import {
@@ -57,6 +58,20 @@ async function buildPunch(
   const serverNowMs = serverNow.getTime();
   const flags: FlagCode[] = [];
 
+  // A punch captured with no signal is replayed from the phone later, so its
+  // GPS fix and its timestamp are both older than "now" through no fault of the
+  // worker. `effectiveNowMs` is the moment the punch claims to have happened,
+  // and every freshness check below is measured against it rather than against
+  // the clock on this server.
+  //
+  // This is the one place the app trusts a client clock. It is bounded (24h),
+  // it cannot be in the future, and it always lands in the review queue — the
+  // alternative was losing a day's hours whenever a crew works somewhere with
+  // no bars, which is most of what this app is for.
+  const offline = parseOfflineCapture(data.offlineCapturedAt, serverNowMs);
+  const effectiveNowMs = offline ? offline.capturedAtMs : serverNowMs;
+  if (offline) flags.push(FLAG.OFFLINE_SYNCED);
+
   const device = sanitiseDevice(data.device);
   const deviceOutcome = await registerDevice(
     device?.id ?? null,
@@ -67,6 +82,7 @@ async function buildPunch(
   flags.push(...deviceOutcome.flags);
 
   if (
+    !offline &&
     device?.clientTime !== undefined &&
     Math.abs(serverNowMs - device.clientTime) > POLICY.maxClockSkewMs
   ) {
@@ -83,7 +99,7 @@ async function buildPunch(
   if (location) {
     distance = distanceMeters(location, site);
 
-    const fixAgeMs = serverNowMs - location.capturedAt;
+    const fixAgeMs = effectiveNowMs - location.capturedAt;
     const fixIsFresh = location.capturedAt > 0 && fixAgeMs <= POLICY.maxFixAgeMs && fixAgeMs > -POLICY.maxClockSkewMs;
     const accuracyIsUsable = location.accuracy <= POLICY.maxAccuracyMeters;
 
@@ -99,9 +115,20 @@ async function buildPunch(
     gpsIsSufficient = fixIsFresh && accuracyIsUsable && withinGeofence;
   }
 
+  const punchAt = offline
+    ? Timestamp.fromMillis(offline.capturedAtMs)
+    : Timestamp.fromDate(serverNow);
+  const offlineRecord = offline
+    ? {
+        capturedAt: Timestamp.fromMillis(offline.capturedAtMs),
+        syncedAt: Timestamp.fromDate(serverNow),
+        delayMinutes: Math.round((serverNowMs - offline.capturedAtMs) / 60000),
+      }
+    : null;
+
   if (gpsIsSufficient && location) {
     return {
-      at: Timestamp.fromDate(serverNow),
+      at: punchAt,
       method: 'gps',
       jobSiteId: site.id,
       jobSiteName: site.name,
@@ -119,6 +146,7 @@ async function buildPunch(
       ip: callerIp(request),
       device,
       note: optionalString(data.note),
+      offline: offlineRecord,
     };
   }
 
@@ -142,7 +170,7 @@ async function buildPunch(
 
   const rawError = data.locationError;
   return {
-    at: Timestamp.fromDate(serverNow),
+    at: punchAt,
     method: 'photo',
     jobSiteId: site.id,
     jobSiteName: site.name,
@@ -167,7 +195,72 @@ async function buildPunch(
     ip: callerIp(request),
     device,
     note: optionalString(data.note),
+    offline: offlineRecord,
   };
+}
+
+const PUNCH_CLAIMS = 'punchClaims';
+
+/** The moment a punch claims to have happened — capture time when offline. */
+function effectiveNow(offlineCapturedAt: unknown, serverNowMs: number): number {
+  return parseOfflineCapture(offlineCapturedAt, serverNowMs)?.capturedAtMs ?? serverNowMs;
+}
+
+/**
+ * Burns a client-generated request id so a retried sync cannot punch twice.
+ *
+ * The failure mode this exists for is mundane and certain: the phone submits a
+ * queued punch, the response is lost on a flaky connection, and the queue
+ * retries. Without this the worker gets two shifts and a phone call from
+ * payroll.
+ */
+async function claimRequestId(uid: string, clientRequestId: string | null | undefined) {
+  if (typeof clientRequestId !== 'string' || !/^[a-zA-Z0-9._-]{8,64}$/.test(clientRequestId)) {
+    return null;
+  }
+  const id = createHash('sha256').update(`${uid}:${clientRequestId}`).digest('hex');
+  const ref = db.collection(PUNCH_CLAIMS).doc(id);
+  try {
+    await ref.create({ uid, clientRequestId, claimedAt: FieldValue.serverTimestamp() });
+    return ref;
+  } catch (err: unknown) {
+    if ((err as { code?: number })?.code === 6) {
+      const existing = await ref.get();
+      throw new HttpsError(
+        'already-exists',
+        'That punch was already recorded.',
+        { reason: 'ALREADY_SUBMITTED', shiftId: existing.data()?.shiftId ?? null },
+      );
+    }
+    throw err;
+  }
+}
+
+/**
+ * Validates a claimed offline capture time, or returns null for a live punch.
+ *
+ * Rejects rather than flags, because a timestamp outside these bounds is not a
+ * judgement call a supervisor could sensibly make — it is either a broken clock
+ * or someone trying it on.
+ */
+function parseOfflineCapture(
+  raw: unknown,
+  serverNowMs: number,
+): { capturedAtMs: number } | null {
+  if (raw === undefined || raw === null) return null;
+  if (typeof raw !== 'number' || !Number.isFinite(raw)) {
+    throw new HttpsError('invalid-argument', 'The saved punch has an unreadable timestamp.');
+  }
+  if (raw > serverNowMs + POLICY.maxClockSkewMs) {
+    throw new HttpsError('invalid-argument', 'That saved punch is dated in the future.');
+  }
+  if (serverNowMs - raw > POLICY.maxOfflineAgeMs) {
+    throw new HttpsError(
+      'failed-precondition',
+      'That saved punch is more than a day old. Ask your supervisor to add the hours by hand.',
+    );
+  }
+  return { capturedAtMs: raw };
 }
 
 function photoRequiredMessage(flags: FlagCode[], siteName: string): string {
@@ -190,7 +283,7 @@ function photoRequiredMessage(flags: FlagCode[], siteName: string): string {
 async function checkImpossibleTravel(
   uid: string,
   punch: PunchRecord,
-  serverNowMs: number,
+  effectiveNowMs: number,
 ): Promise<FlagCode[]> {
   if (!punch.location) return [];
 
@@ -207,7 +300,7 @@ async function checkImpossibleTravel(
   const prevPunch = prev.clockOut ?? prev.clockIn;
   if (!prevPunch?.location) return [];
 
-  const elapsedSeconds = (serverNowMs - prevPunch.at.toMillis()) / 1000;
+  const elapsedSeconds = (effectiveNowMs - prevPunch.at.toMillis()) / 1000;
   if (elapsedSeconds <= 0) return [];
 
   const metres = distanceMeters(punch.location, prevPunch.location);
@@ -219,7 +312,7 @@ async function checkImpossibleTravel(
 }
 
 /** Rejects double-taps and rapid-fire scripted calls. */
-async function assertNotTooSoon(uid: string, serverNowMs: number): Promise<void> {
+async function assertNotTooSoon(uid: string, effectiveNowMs: number): Promise<void> {
   const recent = await db
     .collection(COLLECTIONS.shifts)
     .where('userId', '==', uid)
@@ -230,7 +323,7 @@ async function assertNotTooSoon(uid: string, serverNowMs: number): Promise<void>
   if (recent.empty) return;
   const prev = recent.docs[0].data() as ShiftDoc;
   const lastAt = (prev.clockOut ?? prev.clockIn).at.toMillis();
-  const gapSeconds = (serverNowMs - lastAt) / 1000;
+  const gapSeconds = (effectiveNowMs - lastAt) / 1000;
 
   if (gapSeconds >= 0 && gapSeconds < POLICY.minSecondsBetweenActions) {
     throw new HttpsError(
@@ -249,6 +342,15 @@ export const clockIn = onCall(CALLABLE_OPTS, async (request) => {
     throw new HttpsError('permission-denied', 'You are not assigned to that job site.');
   }
 
+  const serverNow = new Date();
+  const effectiveNowMs = effectiveNow(data.offlineCapturedAt, serverNow.getTime());
+
+  // Before anything else: if this exact request already succeeded, say so
+  // plainly. A phone that submitted, lost signal before hearing back, and
+  // retried must get an answer its queue can act on — not "you are already
+  // clocked in", which is true but tells it nothing about what to do.
+  const claim = await claimRequestId(caller.uid, data.clientRequestId);
+
   const openShift = await db
     .collection(COLLECTIONS.shifts)
     .where('userId', '==', caller.uid)
@@ -264,12 +366,10 @@ export const clockIn = onCall(CALLABLE_OPTS, async (request) => {
     );
   }
 
-  const serverNow = new Date();
-  await assertNotTooSoon(caller.uid, serverNow.getTime());
-
+  await assertNotTooSoon(caller.uid, effectiveNowMs);
   const site = await loadJobSite(jobSiteId);
   const punch = await buildPunch(caller, data, request, site, serverNow);
-  punch.flags.push(...(await checkImpossibleTravel(caller.uid, punch, serverNow.getTime())));
+  punch.flags.push(...(await checkImpossibleTravel(caller.uid, punch, effectiveNowMs)));
 
   const needsReview = punch.flags.length > 0;
   const ref = db.collection(COLLECTIONS.shifts).doc();
@@ -305,6 +405,7 @@ export const clockIn = onCall(CALLABLE_OPTS, async (request) => {
   // create() rather than set(): if two taps race, the second gets a clean
   // failure instead of overwriting the first.
   await ref.create(shift);
+  await claim?.update({ shiftId: ref.id }).catch(() => undefined);
 
   await writeAudit({
     action: 'shift.clock_in',
@@ -336,6 +437,13 @@ export const clockOut = onCall(CALLABLE_OPTS, async (request) => {
   const caller = await requireActiveUser(request);
   const data = (request.data ?? {}) as ClockRequest;
 
+  const serverNow = new Date();
+  const effectiveNowMs = effectiveNow(data.offlineCapturedAt, serverNow.getTime());
+
+  // Same reasoning as clockIn: answer a replayed request id before any state
+  // check can turn it into a different, unactionable error.
+  const claim = await claimRequestId(caller.uid, data.clientRequestId);
+
   const openShifts = await db
     .collection(COLLECTIONS.shifts)
     .where('userId', '==', caller.uid)
@@ -350,8 +458,7 @@ export const clockOut = onCall(CALLABLE_OPTS, async (request) => {
   const shiftRef = openShifts.docs[0].ref;
   const shift = openShifts.docs[0].data() as ShiftDoc;
 
-  const serverNow = new Date();
-  await assertNotTooSoon(caller.uid, serverNow.getTime());
+  await assertNotTooSoon(caller.uid, effectiveNowMs);
 
   // Clock out against the site the shift was opened at, not whatever the client
   // sends, so the pair can never straddle two sites.
@@ -364,7 +471,7 @@ export const clockOut = onCall(CALLABLE_OPTS, async (request) => {
   }
 
   const punch = await buildPunch(caller, { ...data, jobSiteId: site.id }, request, site, serverNow);
-  punch.flags.push(...(await checkImpossibleTravel(caller.uid, punch, serverNow.getTime())));
+  punch.flags.push(...(await checkImpossibleTravel(caller.uid, punch, effectiveNowMs)));
 
   const durationMinutes = Math.max(
     0,
@@ -384,6 +491,7 @@ export const clockOut = onCall(CALLABLE_OPTS, async (request) => {
     'review.status': needsReview ? 'pending' : 'approved',
     updatedAt: FieldValue.serverTimestamp(),
   });
+  await claim?.update({ shiftId: shiftRef.id }).catch(() => undefined);
 
   await writeAudit({
     action: 'shift.clock_out',

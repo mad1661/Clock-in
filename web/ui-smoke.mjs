@@ -388,7 +388,62 @@ console.log('\n=== Device is recorded on each punch ===');
   await ctx.close();
 }
 
-// --- 7. Worker cannot reach admin routes -----------------------------------
+// --- 7. Offline: the punch survives a dead connection ----------------------
+console.log('\n=== No signal: punch is held and synced later ===');
+{
+  const { ctx, page } = await newPage({ geo: { ...SITE, accuracy: 12 } });
+  await login(page, WORKER);
+  await page.waitForSelector('.clock-btn', { timeout: 20000 });
+  await selectSite(page, 'Harbour Works');
+
+  // Cut the network the way a basement does: the app is already loaded, the
+  // request simply never arrives.
+  await ctx.setOffline(true);
+  await page.getByRole('button', { name: /Clock in/ }).click();
+
+  await page.getByText(/saved on this phone/i).first().waitFor({ timeout: 45000 });
+  check('a punch with no signal is saved, not lost', true);
+  check(
+    'the worker is told it will send itself',
+    await page.getByText(/automatically/i).first().isVisible(),
+  );
+  await shot(page, `ui-18-offline-saved.png`, true);
+
+  // Signal returns.
+  await ctx.setOffline(false);
+  await page.evaluate(() => window.dispatchEvent(new Event('online')));
+
+  await page.locator('.elapsed').waitFor({ timeout: 45000 });
+  check('it syncs on its own once the signal is back', true);
+  check(
+    'and the worker is now on shift',
+    /^\d:\d\d:\d\d$/.test((await page.locator('.elapsed').innerText()).trim()),
+  );
+  await shot(page, `ui-19-offline-synced.png`, true);
+  await ctx.close();
+}
+
+// --- 8. Admin sees the offline punch flagged -------------------------------
+console.log('\n=== On-site board and offline flag ===');
+{
+  const { ctx, page } = await newPage({ geo: { ...SITE, accuracy: 12 } });
+  await login(page, ADMIN);
+  await page.getByRole('link', { name: 'On site' }).click();
+  await page.getByText('Pat Doyle').first().waitFor({ timeout: 20000 });
+  check('the on-site board shows who is clocked in', true);
+  check(
+    'with a live running timer',
+    /\d+:\d\d:\d\d/.test(await page.locator('.row-head .pill').first().innerText()),
+  );
+  check(
+    'and flags the punch as synced from offline',
+    await page.getByText(/Saved offline/i).first().isVisible(),
+  );
+  await shot(page, `ui-20-on-site.png`, true);
+  await ctx.close();
+}
+
+// --- 9. Worker cannot reach admin routes -----------------------------------
 console.log('\n=== Worker cannot reach admin routes ===');
 {
   const { ctx, page } = await newPage({ geo: { ...SITE, accuracy: 12 } });

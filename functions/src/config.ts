@@ -75,6 +75,13 @@ export const POLICY = {
    * payroll period is not reopened.
    */
   maxEditRequestAgeDays: 14,
+
+  /**
+   * How long a punch captured with no signal may sit on the phone before it is
+   * refused on sync. Long enough to cover a full day in a canyon or a basement;
+   * short enough that nobody is submitting last week's hours from a cached app.
+   */
+  maxOfflineAgeMs: 24 * 60 * 60 * 1000,
 } as const;
 
 /** Reasons a shift can be flagged for admin review. */
@@ -89,6 +96,7 @@ export const FLAG = {
   IMPOSSIBLE_TRAVEL: 'IMPOSSIBLE_TRAVEL',
   SHARED_DEVICE: 'SHARED_DEVICE',
   WORKER_EDITED: 'WORKER_EDITED',
+  OFFLINE_SYNCED: 'OFFLINE_SYNCED',
 } as const;
 
 export type FlagCode = (typeof FLAG)[keyof typeof FLAG];

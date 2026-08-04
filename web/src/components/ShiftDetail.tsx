@@ -88,6 +88,14 @@ function PunchDetail({ label, punch }: { label: string; punch: PunchRecord }) {
         </div>
       )}
 
+      {punch.offline && (
+        <p className="hint">
+          Captured with no signal at {fmtDateTime(punch.offline.capturedAt)} and synced{' '}
+          {punch.offline.delayMinutes} minute{punch.offline.delayMinutes === 1 ? '' : 's'} later.
+          The time above is the phone's, not the server's.
+        </p>
+      )}
+
       {punch.locationError && (
         <p className="hint">Location error reported: {punch.locationError.message}</p>
       )}

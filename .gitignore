@@ -1,6 +1,8 @@
 node_modules/
 dist/
-lib/
+# Anchored to the functions build output. A bare `lib/` also matches
+# web/src/lib, which silently kept ten source files out of every commit.
+/functions/lib/
 *.local
 .env
 .env.*

@@ -85,6 +85,14 @@ export interface DeviceInput {
 
 export interface ClockRequest {
   jobSiteId: string;
+  /**
+   * Set only when the punch was captured with no signal and is being replayed
+   * from the phone's queue. Epoch ms from the device at capture time — the one
+   * place this app accepts a client clock, and it is always flagged for review.
+   */
+  offlineCapturedAt?: number | null;
+  /** Idempotency key, so a retried sync cannot double-punch. */
+  clientRequestId?: string | null;
   location?: LocationInput | null;
   /** Why the browser could not produce a fix, if it could not. */
   locationError?: { code?: number; message?: string } | null;
@@ -114,6 +122,8 @@ export interface PunchRecord {
   ip: string | null;
   device: DeviceInput | null;
   note: string | null;
+  /** Set when this punch was captured offline and synced later. */
+  offline: { capturedAt: Timestamp; syncedAt: Timestamp; delayMinutes: number } | null;
 }
 
 export interface ShiftDoc {

@@ -2,6 +2,14 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import './styles.css';
 
+// Registered outside the app bootstrap so a service-worker failure — an old
+// browser, a locked-down enterprise phone — can never stop the clock loading.
+if ('serviceWorker' in navigator && window.isSecureContext) {
+  window.addEventListener('load', () => {
+    void navigator.serviceWorker.register('/sw.js').catch(() => undefined);
+  });
+}
+
 const container = document.getElementById('root');
 if (!container) throw new Error('Missing #root element');
 const root = createRoot(container);

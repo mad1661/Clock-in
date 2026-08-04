@@ -1,0 +1,30 @@
+{
+  "name": "Coburn Equipment Rentals — Time Clock",
+  "short_name": "Coburn Clock",
+  "description": "Clock in and out with verified on-site location.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#eef1f6",
+  "theme_color": "#003593",
+  "icons": [
+    {
+      "src": "/coburn-logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/favicon.png",
+      "sizes": "64x64",
+      "type": "image/png"
+    }
+  ]
+}

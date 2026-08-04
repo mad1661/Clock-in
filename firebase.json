@@ -5,12 +5,24 @@
     "rewrites": [{ "source": "**", "destination": "/index.html" }],
     "headers": [
       {
-        "source": "**/*.@(js|css|svg|png|jpg|woff2)",
+        "comment": "Only /assets is content-hashed by Vite, so only /assets is safe to freeze. A broader glob would also match sw.js and pin every phone to a stale service worker for a year.",
+        "source": "/assets/**",
         "headers": [{ "key": "Cache-Control", "value": "max-age=31536000,immutable" }]
       },
       {
         "source": "/index.html",
         "headers": [{ "key": "Cache-Control", "value": "no-cache" }]
+      },
+      {
+        "source": "/sw.js",
+        "headers": [{ "key": "Cache-Control", "value": "no-cache" }]
+      },
+      {
+        "source": "/manifest.webmanifest",
+        "headers": [
+          { "key": "Cache-Control", "value": "no-cache" },
+          { "key": "Content-Type", "value": "application/manifest+json" }
+        ]
       },
       {
         "source": "**",
