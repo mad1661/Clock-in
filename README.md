@@ -17,9 +17,14 @@ It reads your web app config out of the project, writes `web/.env`, builds
 everything and deploys the rules, indexes, functions and website. Re-run it any
 time; nothing it does is destructive.
 
-No computer to hand? Run the same command in
-[Google Cloud Shell](https://shell.cloud.google.com) from a phone browser — it
-is already signed in to your Google account and the script handles the rest.
+**On a phone?** Open this one-tap link — it starts Google Cloud Shell (a real
+terminal in a browser tab, already signed in to your Google account), clones the
+repo, and opens a walkthrough with a copy button on every command:
+
+[**Deploy from your phone →**](https://shell.cloud.google.com/cloudshell/editor?cloudshell_git_repo=https%3A%2F%2Fgithub.com%2Fmad1661%2FClock-in.git&cloudshell_workspace=.&cloudshell_tutorial=TUTORIAL.md)
+
+You will be asked to authorise GitHub once (the repo is private), sign in to
+Firebase, and type your project ID. Nothing else.
 
 You will need the Firebase **Blaze** (pay-as-you-go) plan — Cloud Functions
 requires it, and so does Cloud Storage on any recently created project. Normal

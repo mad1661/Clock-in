@@ -88,23 +88,31 @@ When it finishes you get a URL: `https://<project-id>.web.app`.
 ### From your phone
 
 You do not need a laptop. **Google Cloud Shell** is a real Linux terminal in a
-browser tab, it already knows who you are, and the Firebase CLI is preinstalled.
+browser tab, already signed in to your Google account, with the Firebase CLI
+preinstalled.
 
-1. Open <https://shell.cloud.google.com> and let it start (about 30 seconds).
-2. Tap the terminal and run:
-   ```bash
-   git clone https://github.com/mad1661/Clock-in.git
-   cd Clock-in
-   ./deploy.sh
-   ```
-   The clone will ask you to authorise GitHub — a private repo needs it once.
-3. When it asks you to sign in to Firebase it prints a link and a code. Tap the
-   link, choose your Google account, copy the code it gives you, paste it back
-   into the terminal. The script detects Cloud Shell and uses the flow that
-   works without a desktop browser.
-4. Enter your project ID when prompted.
+**[Tap here to start →](https://shell.cloud.google.com/cloudshell/editor?cloudshell_git_repo=https%3A%2F%2Fgithub.com%2Fmad1661%2FClock-in.git&cloudshell_workspace=.&cloudshell_tutorial=TUTORIAL.md)**
 
-Turn your phone sideways — the terminal is much easier to use in landscape.
+That link clones the repo and opens `TUTORIAL.md` as a step-by-step pane beside
+the terminal, with a copy button on every command — you should not have to type
+anything except your project ID.
+
+You will be asked to authorise GitHub once, because the repository is private.
+
+If the link does not open the walkthrough, do it by hand instead:
+
+```bash
+git clone https://github.com/mad1661/Clock-in.git
+cd Clock-in
+./deploy.sh
+```
+
+When it asks you to sign in to Firebase it prints a link and a code: tap the
+link, choose your Google account, copy the code back, paste it into the
+terminal. The script detects Cloud Shell and uses that flow automatically,
+because the normal one waits on a localhost callback a phone cannot provide.
+
+Turn your phone sideways — the terminal is far easier in landscape.
 
 ### Later deploys, from anywhere
 
