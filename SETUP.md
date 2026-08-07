@@ -67,7 +67,7 @@ cd Clock-in
 ./deploy.sh
 ```
 
-It asks for your project ID, then handles the rest: reads your web app config
+It picks the project up from `.firebaserc`, then handles the rest: reads your web app config
 straight out of the project (no copy-pasting six values), writes `web/.env`,
 installs, builds, and deploys the rules, indexes, functions and website.
 
@@ -83,7 +83,7 @@ are most likely to hit on a fresh project:
   minute, re-run. If only the nightly auto-close fails, the script deploys
   everything else anyway and tells you — the app works fine without it.
 
-When it finishes you get a URL: `https://<project-id>.web.app`.
+When it finishes your site is live at **https://clockit-bc990.web.app**.
 
 ### From your phone
 
@@ -94,8 +94,8 @@ preinstalled.
 **[Tap here to start →](https://shell.cloud.google.com/cloudshell/editor?cloudshell_git_repo=https%3A%2F%2Fgithub.com%2Fmad1661%2FClock-in.git&cloudshell_workspace=.&cloudshell_tutorial=TUTORIAL.md)**
 
 That link clones the repo and opens `TUTORIAL.md` as a step-by-step pane beside
-the terminal, with a copy button on every command — you should not have to type
-anything except your project ID.
+the terminal, with a copy button on every command. The project (`clockit-bc990`) is
+already pinned in `.firebaserc`, so there is nothing to type.
 
 You will be asked to authorise GitHub once, because the repository is private.
 
