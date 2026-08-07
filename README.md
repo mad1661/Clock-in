@@ -23,8 +23,9 @@ repo, and opens a walkthrough with a copy button on every command:
 
 [**Deploy from your phone →**](https://shell.cloud.google.com/cloudshell/editor?cloudshell_git_repo=https%3A%2F%2Fgithub.com%2Fmad1661%2FClock-in.git&cloudshell_workspace=.&cloudshell_tutorial=TUTORIAL.md)
 
-You will be asked to authorise GitHub once (the repo is private) and to sign in
-to Firebase. Nothing else — the project (`clockit-bc990`) is pinned in `.firebaserc`.
+The only thing it needs from you is the Firebase sign-in code — the project
+(`clockit-bc990`) is pinned in `.firebaserc`, and the repository is public so the clone
+needs no GitHub sign-in.
 
 Once deployed, the app lives at **https://clockit-bc990.web.app**.
 

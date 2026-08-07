@@ -38,8 +38,7 @@ If Cloud Shell has not already cloned the repository for you, do it now:
 git clone https://github.com/mad1661/Clock-in.git
 ```
 
-GitHub will ask you to sign in, because the repository is private. Follow the
-prompt in the browser.
+The repository is public, so this needs no sign-in.
 
 Then move into the folder:
 

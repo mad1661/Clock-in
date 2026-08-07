@@ -100,7 +100,7 @@ That link clones the repo and opens `TUTORIAL.md` as a step-by-step pane beside
 the terminal, with a copy button on every command. The project (`clockit-bc990`) is
 already pinned in `.firebaserc`, so there is nothing to type.
 
-You will be asked to authorise GitHub once, because the repository is private.
+The repository is public, so the clone needs no GitHub sign-in.
 
 If the link does not open the walkthrough, do it by hand instead:
 
@@ -124,32 +124,37 @@ Turn your phone sideways — the terminal is far easier in landscape.
 ./deploy.sh --hosting-only  # just the website, when that is all you changed
 ```
 
-### Optional: deploy by tapping a button
+### Alternative: deploy automatically on every push
 
-`.github/workflows/deploy.yml` lets you deploy from the GitHub mobile app —
-**Actions → Deploy → Run workflow**. Worth wiring up once you are making regular
-changes. It is fiddlier to set up than Cloud Shell and easier from a computer,
-because it involves handling a key file:
+`.github/workflows/deploy.yml` already runs on every push to the deploy branch.
+It is wired up and working — it just stops at the credential check, because
+there is no key for it to use. Add that one secret and every push deploys
+itself, with no terminal involved at all.
 
-1. Firebase console → **⚙ Project settings → Service accounts → Generate new
-   private key**. A `.json` file downloads.
-2. That key can only talk to the Admin SDK by default; it needs deploy rights.
-   Go to <https://console.cloud.google.com/iam-admin/iam>, find the
-   `firebase-adminsdk-…` account, edit it, and add these roles:
-   **Firebase Admin**, **Cloud Functions Admin**, **Service Account User**,
-   **Cloud Build Editor**, **Artifact Registry Administrator**.
-3. In GitHub → **Settings → Secrets and variables → Actions**:
-   - **New repository secret** named `FIREBASE_SERVICE_ACCOUNT` — paste the
-     entire contents of the JSON file, braces included.
-   - **Variables** tab → **New repository variable** named
-     `FIREBASE_PROJECT_ID` — your project id.
+The project id is picked up from `.firebaserc`, so **the secret is the only
+thing to configure**.
 
-> That key is a password to your Firebase project. Do not commit it, do not
-> email it to yourself, and delete the downloaded file once it is pasted in.
-> If it ever leaks, revoke it under Service accounts → Manage keys.
+1. Firebase console → **[Project settings → Service accounts → Generate new
+   private key](https://console.firebase.google.com/project/clockit-bc990/settings/serviceaccounts/adminsdk)**.
+   A `.json` file downloads.
+2. That key only talks to the Admin SDK by default; it needs deploy rights.
+   At <https://console.cloud.google.com/iam-admin/iam?project=clockit-bc990>, find the
+   `firebase-adminsdk-…` account, edit it, and add: **Firebase Admin**,
+   **Cloud Functions Admin**, **Service Account User**, **Cloud Build Editor**,
+   **Artifact Registry Administrator**.
+3. GitHub → **Settings → Secrets and variables → Actions → New repository
+   secret**, named `FIREBASE_SERVICE_ACCOUNT`. Paste the whole JSON file,
+   braces included.
 
-If you already have a computer handy, `firebase init hosting:github` sets all of
-this up for you, correctly scoped, in one command.
+Then push anything, or use **Actions → Deploy → Run workflow**.
+
+> That key is a password to your Firebase project, and this repository is
+> public — never commit it. Delete the downloaded file once it is pasted into
+> the GitHub secret. If it ever leaks, revoke it under Service accounts →
+> Manage keys.
+
+On a computer, `firebase init hosting:github` does all three steps for you with
+correctly scoped permissions.
 
 ---
 
