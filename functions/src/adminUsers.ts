@@ -61,11 +61,29 @@ export const bootstrapAdmin = onCall(CALLABLE_OPTS, async (request) => {
     .limit(1)
     .get();
 
+  // Bootstrap is two writes — the profile, then the auth claims — and it is not
+  // atomic. If the first succeeded and the second failed, the caller is a
+  // half-made admin: the profile says admin, the token does not, and every
+  // retry would hit "an administrator already exists" and lock them out of
+  // their own project permanently. So if the only admin IS the caller, finish
+  // the job instead of refusing.
   if (!existingAdmins.empty) {
-    throw new HttpsError(
-      'failed-precondition',
-      'An administrator already exists. Ask them to create your account.',
-    );
+    const owner = existingAdmins.docs[0];
+    if (owner.id !== uid) {
+      throw new HttpsError(
+        'failed-precondition',
+        'An administrator already exists. Ask them to create your account.',
+      );
+    }
+
+    await syncClaims(uid, 'admin', true, true);
+    logger.info('Re-synced claims for an existing admin', { uid });
+    return {
+      ok: true,
+      uid,
+      email: owner.data().email ?? token.email.toLowerCase(),
+      displayName: owner.data().displayName ?? '',
+    };
   }
 
   const email = token.email.toLowerCase();
@@ -75,20 +93,40 @@ export const bootstrapAdmin = onCall(CALLABLE_OPTS, async (request) => {
     email.split('@')[0];
 
   const now = FieldValue.serverTimestamp();
-  await db.collection(COLLECTIONS.users).doc(uid).set({
-    uid,
-    email,
-    displayName,
-    role: 'admin',
-    active: true,
-    jobSiteIds: [],
-    createdAt: now,
-    createdBy: null,
-    updatedAt: now,
-    mustChangePassword: false,
-  });
+  try {
+    await db.collection(COLLECTIONS.users).doc(uid).set({
+      uid,
+      email,
+      displayName,
+      role: 'admin',
+      active: true,
+      jobSiteIds: [],
+      createdAt: now,
+      createdBy: null,
+      updatedAt: now,
+      mustChangePassword: false,
+    });
+  } catch (err) {
+    logger.error('Bootstrap failed writing the profile', { uid, err });
+    throw new HttpsError(
+      'internal',
+      'Could not write to the database. Check that Firestore was created in ' +
+        'Native mode (not Datastore mode) in the Firebase console.',
+    );
+  }
 
-  await syncClaims(uid, 'admin', true, true);
+  try {
+    await syncClaims(uid, 'admin', true, true);
+  } catch (err) {
+    logger.error('Bootstrap failed setting auth claims', { uid, err });
+    throw new HttpsError(
+      'internal',
+      'Your profile was created but your admin permissions could not be set. ' +
+        'The functions service account is missing Firebase Authentication ' +
+        'rights — grant it the "Firebase Authentication Admin" role, then ' +
+        'open this page again.',
+    );
+  }
   await writeAudit({
     action: 'admin.bootstrap',
     actorUid: uid,
