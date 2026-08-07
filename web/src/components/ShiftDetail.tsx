@@ -1,6 +1,4 @@
-import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
-import { getDownloadURL, ref } from 'firebase/storage';
-import { storage } from '../firebase';
+import { Suspense, lazy, useMemo } from 'react';
 import { fmtDateTime, fmtDistance, fmtDuration, fmtTime } from '../lib/format';
 import { shortDeviceId } from '../lib/device';
 import { FlagList, Spinner } from './ui';
@@ -167,8 +165,6 @@ function PunchDetail({ label, punch }: { label: string; punch: PunchRecord }) {
 
       {punch.note && <p className="hint">Note: {punch.note}</p>}
 
-      {punch.photoPath && <PhotoEvidence path={punch.photoPath} />}
-
       <details>
         <summary className="hint" style={{ cursor: 'pointer' }}>
           Full device and network details
@@ -186,33 +182,5 @@ function PunchDetail({ label, punch }: { label: string; punch: PunchRecord }) {
         {punch.device?.userAgent && <p className="mono hint">{punch.device.userAgent}</p>}
       </details>
     </div>
-  );
-}
-
-function PhotoEvidence({ path }: { path: string }) {
-  const [url, setUrl] = useState<string | null>(null);
-  const [failed, setFailed] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    getDownloadURL(ref(storage, path))
-      .then((u) => {
-        if (!cancelled) setUrl(u);
-      })
-      .catch(() => {
-        if (!cancelled) setFailed(true);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [path]);
-
-  if (failed) return <p className="hint">Photo could not be loaded.</p>;
-  if (!url) return <p className="hint">Loading photo…</p>;
-
-  return (
-    <a href={url} target="_blank" rel="noreferrer noopener">
-      <img className="photo-preview" src={url} alt="Proof of presence taken at the job site" />
-    </a>
   );
 }

@@ -6,7 +6,7 @@ import {
 } from 'firebase/auth';
 import { FirebaseError } from 'firebase/app';
 import { useAuth } from '../auth/AuthProvider';
-import { api } from '../lib/api';
+import { acknowledgePasswordChange } from '../lib/actions';
 import { Banner, Card } from '../components/ui';
 
 const MIN_PASSWORD_LENGTH = 10;
@@ -46,7 +46,7 @@ export default function Account() {
       // half-way through.
       await reauthenticateWithCredential(user, EmailAuthProvider.credential(user.email, current));
       await updatePassword(user, next);
-      await api.acknowledgePasswordChange({});
+      await acknowledgePasswordChange();
       setDone(true);
       setCurrent('');
       setNext('');

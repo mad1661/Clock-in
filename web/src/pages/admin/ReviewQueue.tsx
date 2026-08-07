@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react';
 import { collection, limit, onSnapshot, orderBy, query, where } from 'firebase/firestore';
 import { db } from '../../firebase';
-import { api, errorMessage } from '../../lib/api';
+import { reviewShift, reviewShiftEdit } from '../../lib/actions';
+import { errorMessage } from '../../lib/errors';
 import { Banner, Card, EmptyState, Modal, Spinner } from '../../components/ui';
 import { ShiftDetail } from '../../components/ShiftDetail';
 import { fmtDate, fmtDateTime, fmtDuration, fmtTime } from '../../lib/format';
 import { FLAG_LABELS } from '../../lib/policy';
+import { withTimestamps } from '../../lib/snapshot';
 import type { Shift } from '../../lib/types';
 
 export default function ReviewQueue() {
@@ -26,7 +28,7 @@ export default function ReviewQueue() {
         orderBy('clockInAt', 'desc'),
         limit(100),
       ),
-      (snap) => setEdits(snap.docs.map((d) => ({ ...(d.data() as Shift), id: d.id }))),
+      (snap) => setEdits(snap.docs.map((d) => withTimestamps<Shift>(d))),
       (err) => {
         setEdits([]);
         setError(errorMessage(err));
@@ -42,7 +44,7 @@ export default function ReviewQueue() {
         orderBy('clockInAt', 'desc'),
         limit(100),
       ),
-      (snap) => setShifts(snap.docs.map((d) => ({ ...(d.data() as Shift), id: d.id }))),
+      (snap) => setShifts(snap.docs.map((d) => withTimestamps<Shift>(d))),
       (err) => {
         setShifts([]);
         setError(errorMessage(err));
@@ -144,7 +146,7 @@ export default function ReviewQueue() {
                   <span>{fmtDuration(shift.durationMinutes)}</span>
                 </div>
                 <div className="row-meta">
-                  <span>{shift.flags.map((f) => FLAG_LABELS[f] ?? f).join(' · ')}</span>
+                  <span>{(shift.flags ?? []).map((f) => FLAG_LABELS[f] ?? f).join(' · ')}</span>
                 </div>
                 <div className="row-actions">
                   <button type="button" className="small primary" onClick={() => setOpen(shift)}>
@@ -179,7 +181,7 @@ function ReviewModal({
     }
     setBusy(true);
     try {
-      await api.reviewShift({ shiftId: shift.id, decision, note: note.trim() || undefined });
+      await reviewShift(shift, decision, note);
       onClose();
     } catch (err) {
       onError(errorMessage(err));
@@ -194,8 +196,8 @@ function ReviewModal({
 
       {shift.status === 'open' ? (
         <Banner kind="info">
-          This shift is still open. It can be reviewed once the worker clocks out, or after the
-          nightly sweep closes it.
+          This shift is still open. It can be reviewed once the worker clocks out — or you can
+          close it yourself from the <strong>On site</strong> tab if they forgot to.
         </Banner>
       ) : (
         <>
@@ -270,7 +272,7 @@ function EditReviewModal({
     }
     setBusy(true);
     try {
-      await api.reviewShiftEdit({ shiftId: shift.id, decision, note: note.trim() || undefined });
+      await reviewShiftEdit(shift, decision, note);
       onClose();
     } catch (err) {
       onError(errorMessage(err));

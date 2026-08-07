@@ -1,7 +1,8 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { collection, onSnapshot, orderBy, query } from 'firebase/firestore';
 import { db } from '../../firebase';
-import { api, errorMessage } from '../../lib/api';
+import { retireJobSite, upsertJobSite } from '../../lib/actions';
+import { errorMessage } from '../../lib/errors';
 import { acquireLocation } from '../../lib/geolocation';
 import { fmtDistance } from '../../lib/format';
 import { Banner, Card, EmptyState, Modal, Spinner } from '../../components/ui';
@@ -94,7 +95,9 @@ export default function JobSites() {
                       onClick={() => {
                         if (!window.confirm(`Retire ${site.name}? Nobody will be able to clock in there.`))
                           return;
-                        void api.deleteJobSite({ id: site.id }).catch((err) => setError(errorMessage(err)));
+                        void retireJobSite(site.id, site.name).catch((err) =>
+                          setError(errorMessage(err)),
+                        );
                       }}
                     >
                       Retire
@@ -192,7 +195,7 @@ function SiteForm({
     setBusy(true);
     setError(null);
     try {
-      await api.upsertJobSite({
+      await upsertJobSite({
         ...(site ? { id: site.id } : {}),
         name,
         address,

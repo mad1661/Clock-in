@@ -1,322 +1,148 @@
-# Setup
+# Setting up the time clock
 
-Two parts: about five minutes of clicking in the Firebase console, then one
-command that does the rest.
+Everything here runs on the **free Spark plan**. You do not need a billing
+account, the Blaze plan, or Cloud Build.
 
-## What it costs
-
-Cloud Functions requires the pay-as-you-go **Blaze** plan, and on any project
-created recently Cloud Storage does too. So yes — you need a card on the
-account before this will deploy.
-
-That is a billing account, not a bill. A crew of a few dozen clocking in and
-out twice a day sits inside the free monthly allowance with room to spare; the
-free tier covers 2M function calls, 5 GB of stored files and 50k Firestore
-reads a day. The photos are the only thing that accumulates, and they are
-resized to about 150 KB before upload. Set a budget alert at step 2 if you want
-a hard backstop.
+The project is already created and pinned in `.firebaserc`
+(`clockit-bc990`), so if you are deploying that project you can skip to step 3.
 
 ---
 
-## Part 1 — the Firebase console
+## 1. Create the Firebase project
 
-### 1. Create the project
+1. Go to <https://console.firebase.google.com> and click **Add project**.
+2. Give it a name. Google Analytics is not used — turn it off.
+3. Note the **project ID** (not the display name). You need it below.
 
-<https://console.firebase.google.com> → **Add project**. Name it something like
-`coburn-clock-in`. Google Analytics is not used here; turn it off if you like.
+## 2. Turn on the two things it uses
 
-Note the **project ID** off the settings page — it is the lowercase one,
-possibly with a number on the end, not the display name. You will need it.
+**Firestore**
 
-### 2. Upgrade to Blaze
+<https://console.firebase.google.com/project/YOUR_PROJECT/firestore>
+→ **Create database** → **Production mode** → pick a region close to you.
 
-**⚙ Settings → Usage and billing → Details & settings → Modify plan → Blaze.**
+Production mode is right: the rules in this repo replace the default ones on
+your first deploy, and they deny everything the app does not explicitly need.
 
-While you are there, set a budget alert (say $10/month) so you hear about it
-long before anything surprising happens.
+**Email sign-in**
 
-### 3. Turn on Authentication
+<https://console.firebase.google.com/project/YOUR_PROJECT/authentication/providers>
+→ **Email/Password** → **Enable** → **Save**.
 
-**Build → Authentication → Get started → Email/Password → Enable → Save.**
+That is all. No Storage, no Functions, no plan upgrade.
 
-Leave "Email link (passwordless sign-in)" off.
-
-### 4. Create the database
-
-**Build → Firestore Database → Create database → Production mode**, then pick a
-region close to your crew (`us-west1` for Chino). The rules in this repo replace
-the defaults on deploy.
-
-> The region is permanent. Storage should match it in the next step.
-
-### 5. Storage — not needed yet
-
-Cloud Storage only backs the photo fallback, which ships switched off. Skip it
-to start; the deploy notices there is no bucket and carries on.
-
-To add it later: **Build → Storage → Get started → Production mode →** same
-region as Firestore, then flip **Workers → Company settings → photo proof** on
-in the app.
-
----
-
-## Part 2 — deploy
-
-### From a computer
+## 3. Deploy
 
 ```bash
-git clone <this repository>
-cd Clock-in
 ./deploy.sh
 ```
 
-It picks the project up from `.firebaserc`, then handles the rest: reads your web app config
-straight out of the project (no copy-pasting six values), writes `web/.env`,
-installs, builds, and deploys the rules, indexes, functions and website.
+It signs you in if needed, reads your web app config out of the project, writes
+`web/.env`, builds the site, and deploys the rules and the website. Re-run it
+any time.
 
-Safe to re-run as many times as you like — nothing it does is destructive, and
-anything already deployed is skipped.
-
-If a step fails it tells you exactly which console page fixes it. The two you
-are most likely to hit on a fresh project:
-
-- **Storage deploy failed** — step 5 above was skipped, or Blaze is not active.
-- **Functions deploy failed** — Blaze is not active, or Google wants you to
-  enable an API first. The error names it and prints the link. Enable it, wait a
-  minute, re-run. If only the nightly auto-close fails, the script deploys
-  everything else anyway and tells you — the app works fine without it.
-
-When it finishes your site is live at **https://clockit-bc990.web.app**.
-
-### From your phone
-
-You do not need a laptop. **Google Cloud Shell** is a real Linux terminal in a
-browser tab, already signed in to your Google account, with the Firebase CLI
-preinstalled.
-
-**[Tap here to start →](https://shell.cloud.google.com/cloudshell/editor?cloudshell_git_repo=https%3A%2F%2Fgithub.com%2Fmad1661%2FClock-in.git&cloudshell_workspace=.&cloudshell_tutorial=TUTORIAL.md)**
-
-That link clones the repo and opens `TUTORIAL.md` as a step-by-step pane beside
-the terminal, with a copy button on every command. The project (`clockit-bc990`) is
-already pinned in `.firebaserc`, so there is nothing to type.
-
-The repository is public, so the clone needs no GitHub sign-in.
-
-If the link does not open the walkthrough, do it by hand instead:
+If you would rather run the commands yourself:
 
 ```bash
-git clone https://github.com/mad1661/Clock-in.git
-cd Clock-in
-./deploy.sh
+npm --prefix web install
+npm --prefix web run build
+firebase deploy --only hosting,firestore --project YOUR_PROJECT
 ```
 
-When it asks you to sign in to Firebase it prints a link and a code: tap the
-link, choose your Google account, copy the code back, paste it into the
-terminal. The script detects Cloud Shell and uses that flow automatically,
-because the normal one waits on a localhost callback a phone cannot provide.
+`--only hosting,firestore` is the whole deploy. There is deliberately nothing
+else — no functions target exists in `firebase.json`, so a plain
+`firebase deploy` will not try to build one.
 
-Turn your phone sideways — the terminal is far easier in landscape.
+## 4. Make yourself the administrator
 
-### Later deploys, from anywhere
-
-```bash
-./deploy.sh                 # everything
-./deploy.sh --hosting-only  # just the website, when that is all you changed
-```
-
-### Alternative: deploy automatically on every push
-
-`.github/workflows/deploy.yml` already runs on every push to the deploy branch.
-It is wired up and working — it just stops at the credential check, because
-there is no key for it to use. Add that one secret and every push deploys
-itself, with no terminal involved at all.
-
-The project id is picked up from `.firebaserc`, so **the secret is the only
-thing to configure**.
-
-1. Firebase console → **[Project settings → Service accounts → Generate new
-   private key](https://console.firebase.google.com/project/clockit-bc990/settings/serviceaccounts/adminsdk)**.
-   A `.json` file downloads.
-2. That key only talks to the Admin SDK by default; it needs deploy rights.
-   At <https://console.cloud.google.com/iam-admin/iam?project=clockit-bc990>, find the
-   `firebase-adminsdk-…` account, edit it, and add: **Firebase Admin**,
-   **Cloud Functions Admin**, **Service Account User**, **Cloud Build Editor**,
-   **Artifact Registry Administrator**.
-3. GitHub → **Settings → Secrets and variables → Actions → New repository
-   secret**, named `FIREBASE_SERVICE_ACCOUNT`. Paste the whole JSON file,
-   braces included.
-
-Then push anything, or use **Actions → Deploy → Run workflow**.
-
-> That key is a password to your Firebase project, and this repository is
-> public — never commit it. Delete the downloaded file once it is pasted into
-> the GitHub secret. If it ever leaks, revoke it under Service accounts →
-> Manage keys.
-
-On a computer, `firebase init hosting:github` does all three steps for you with
-correctly scoped permissions.
-
----
-
-## Part 3 — make yourself the administrator
-
-The app has no sign-up page; administrators create every account. So the first
-one is made by hand, once:
-
-1. **Authentication → Users → Add user.** Your email and a password.
-2. Open `https://<project-id>.web.app` and sign in with it.
-3. You land on a **Set up your company** screen. Enter your name and tap
+1. Create your own login:
+   <https://console.firebase.google.com/project/YOUR_PROJECT/authentication/users>
+   → **Add user** → your email address and a password.
+2. Open `https://YOUR_PROJECT.web.app` and sign in with it.
+3. You will land on **Set up your company**. Enter your name and tap
    **Make me the administrator**.
 
-That door closes behind you: the function refuses to run once any administrator
-exists, so it cannot be used to escalate later.
+That works exactly once. The security rules allow an admin profile to be created
+only alongside the company record, and the company record can only be created
+once — so the first person through this screen claims it, and nobody after can.
 
-Then add your first job site (**Job sites → + Add site** — stand at the middle
-of the site and tap "Use my current location") and your crew
-(**Workers → + Add employee**). Each new worker gets a one-time password shown
-to you **once** — copy it before closing the dialog. Nothing is emailed; you
-hand it over however you normally would.
+If you see *"Could not continue"* on that screen, the company has already been
+claimed. Ask whoever set it up to create an account for you under **Workers**.
 
----
+## 5. Add a job site and your crew
 
-## Recommended: turn on App Check
+**Job sites** → **+ Add site**. Search an address, tap the map, or stand on site
+and tap *use my current location*. Set the boundary radius — 100 m is a sensible
+default for a yard; make it big enough to cover where people actually park and
+walk in.
 
-App Check attests that API calls come from your real app in a real browser. It
-is the difference between "a worker would have to spoof GPS on their phone" and
-"a worker could write a script." Worth the ten minutes once the app is running.
-
-1. **App Check → Apps → your web app → reCAPTCHA Enterprise → Register.**
-   Follow the link to create a key for your domain, paste the site key back in.
-2. Add it to `web/.env`:
-   ```
-   VITE_RECAPTCHA_SITE_KEY=6Lc...
-   ```
-3. Deploy the website **first**, so browsers start sending tokens:
-   ```bash
-   ./deploy.sh --hosting-only
-   ```
-4. Then turn on enforcement. Create `functions/.env`:
-   ```
-   ENFORCE_APP_CHECK=true
-   ```
-   and deploy:
-   ```bash
-   ./deploy.sh
-   ```
-
-Order matters — enforcing before the web app sends tokens locks everyone out
-until you deploy hosting.
-
-> `functions/.env` is uploaded on deploy. `functions/.env.local` is the
-> emulator-only one and never leaves your machine.
-
-## Optional: your own domain
-
-**Hosting → Add custom domain**, follow the DNS instructions. Firebase
-provisions the HTTPS certificate.
-
-HTTPS is not optional here — browsers refuse to give location to a page served
-over plain HTTP, so everyone would land on the photo fallback.
+**Workers** → **+ Add employee**. A one-time password is generated and shown
+**once**. Copy it and give it to them; they change it on first sign-in under
+**Account**. If you lose it, use **Send reset link**.
 
 ---
 
-## Day-to-day
+## Optional: App Check
 
-**Someone forgot their password.** Workers → their row → **Reset password**.
-The old one stops working immediately and you get a new one-time password to
-hand over.
+App Check makes it harder to talk to your database with anything other than the
+real app. It is optional and the app runs fine without it.
 
-**Someone left.** Workers → **Deactivate**. They are signed out within seconds
-and cannot clock in. Their history stays intact for payroll.
+1. Register a **reCAPTCHA v3** site key at
+   <https://www.google.com/recaptcha/admin> (v3 is free; do **not** pick
+   Enterprise, which needs billing).
+2. <https://console.firebase.google.com/project/YOUR_PROJECT/appcheck> → register
+   your web app with that key.
+3. Put the site key in `web/.env` as `VITE_RECAPTCHA_SITE_KEY=…` and redeploy.
 
-**A punch is stuck in review.** Review tab, "Needs review". You get both
-punches, coordinates with a map link, the photo, distance, accuracy, the handset
-and the IP. Approve or reject with a note — a rejection note shows on the
-worker's timesheet.
+Turn on enforcement for Firestore only after you have confirmed the app still
+works with the key in place.
 
-**A worker asked to correct their hours.** Review tab, "Change requests". You
-see the recorded times beside what they are asking for, their reason, and the
-captured evidence underneath. Approving applies the change and marks the shift
-worker-edited; turning it down needs a note, which they see. Nothing moves until
-you decide. Workers can request corrections on their own closed shifts for 14
-days; after that it is a supervisor adjustment.
+## Optional: maps
 
-**Two workers clocked in from the same phone.** That trips the shared-handset
-flag into the review queue. Check the device handle (`D-4F2A9C`) on each punch —
-model names are often identical, so the handle is what tells them apart. Not
-always dishonest: a crew lead clocking in someone whose battery died looks the
-same.
+Maps use Esri's public World Imagery basemap with no key, which is fine to get
+going. An ArcGIS location platform key (free tier at developers.arcgis.com) in
+`VITE_ARCGIS_API_KEY` switches to the supported production basemaps.
 
-**Someone forgot to clock out.** The nightly sweep closes any shift open longer
-than 16 hours, records it as zero minutes, and queues it for review. Fix it with
-**Timesheets → Adjust times**; a reason is required and the edit is audited
-against your name.
+---
 
-**Who is on site right now?** The **On site** tab. Live — a clock-in shows up
-within a second — grouped by job site, with a running timer per worker and a
-warning on anyone past ten hours who has probably forgotten to clock out.
+## Running it locally
 
-**Turning photo proof on.** Once Cloud Storage is enabled in the console, go to
-**Workers → Company settings** and switch it on. With it off, punches that
-cannot be confirmed by location are recorded and flagged for you; with it on, a
-worker must take a photo at the job site before the punch is accepted. Either
-way nobody is blocked from clocking in.
+```bash
+npm --prefix web install
+npm run emulators          # Auth, Firestore and Hosting on your machine
+```
 
-**Payroll.** Timesheets → set the dates → **Export CSV**. The export includes a
-California overtime summary per worker (regular / 1.5x / 2x), worked out week by
-week using the daily rules — four ten-hour days is 8 hours of overtime even
-though the week totals 40. Treat it as a cross-check against whoever runs your
-payroll, not as a payroll calculation: it does not know about alternative
-workweek agreements, exempt staff, or meal-period premiums.
+Point the web app at them by setting `VITE_USE_EMULATORS=true` in `web/.env`,
+then `npm --prefix web run dev`.
 
-**A punch is flagged "Saved offline, synced later".** The worker was somewhere
-with no signal. The app held the punch on their phone and sent it in when the
-connection came back, so its time came from the phone rather than the server.
-That is why it needs your sign-off. Anything over 24 hours old is refused
-outright and has to be added by hand.
+Tests:
 
-**Tell the crew to install it.** On the site, tap Share → Add to Home Screen
-(iPhone) or the install prompt (Android). It then opens like an app, and opens
-even with no connection.
+```bash
+npm test                   # the security rules — the important one
+npm run test:ui            # end-to-end browser test (emulators must be running)
+npm run test:overtime      # California overtime maths
+```
 
-## Tuning
-
-Every threshold lives in `functions/src/config.ts`, each with a comment
-explaining the number. The ones most worth touching:
-
-| Setting | Default | When to change it |
-|---|---|---|
-| `defaultSiteRadiusMeters` | 150 m | Per-site radius is set in the UI; this is only the starting value. |
-| `maxAccuracyMeters` | 150 m | Raise if a site has chronically poor GPS and honest crews keep hitting the photo path. |
-| `maxShiftHours` | 16 h | Set above your longest realistic shift. |
-| `maxEditRequestAgeDays` | 14 d | How far back a worker may ask to correct their own timesheet. Keep it inside your payroll period. |
-| `sharedDeviceWindowHours` | 12 h | How long after one worker punches on a handset another trips the shared-device flag. |
-| `minSecondsBetweenActions` | 30 s | Rarely worth changing. |
-
-Then `./deploy.sh`. If you change a threshold the clock screen displays as a
-hint, mirror it in `web/src/lib/policy.ts` too — the server value decides, but
-the hint should not contradict it.
+---
 
 ## Troubleshooting
 
-**"Not configured yet" on a blank page.** `web/.env` is missing or incomplete.
-Re-run `./deploy.sh`, which regenerates it. Vite bakes these values in at build
-time, so a rebuild and redeploy is always required after changing them.
+**"Missing or insufficient permissions"** — the rules are not deployed. Run
+`firebase deploy --only firestore`.
 
-**Everyone is pushed to the photo fallback.** Check the site is served over
-HTTPS, and that the site coordinates are right (Job sites → **View on map**). A
-radius set too tight is the other common cause.
+**"Could not continue" on the setup screen** — the company is already claimed.
+See step 4.
 
-**Photo uploads fail.** Storage was not set up (Part 1 step 5), or the region
-does not match. Check `VITE_FIREBASE_STORAGE_BUCKET` in `web/.env` against
-**Storage** in the console.
+**A worker cannot clock in at a site** — check the site is **active**, and that
+they are either unassigned (which means all sites) or assigned to that one.
 
-**"The query requires an index."** `./deploy.sh` pushes them; they take a minute
-or two to build. Progress is under **Firestore → Indexes**.
+**Punches keep landing in the review queue** — the boundary is probably too
+tight for where people actually stand. Open the site on the map and check the
+circle covers the whole working area, not just the office trailer.
 
-**A callable returns "unauthenticated" right after creating a worker.** Their ID
-token has not picked up the new custom claims yet. Signing out and back in fixes
-it; the app also refreshes the token automatically once it notices.
+**Someone left without clocking out** — **On site** → close the shift. It is
+flagged so it is obvious on the timesheet.
 
-**Deploy says the Node runtime is not supported.** Update the CLI:
-`npm install -g firebase-tools`.
+**A deactivated worker can still sign in** — expected, and harmless. Disabling
+the Auth account itself needs the Admin SDK. Every rule checks `active`, so they
+can read nothing and write nothing; they see an "account deactivated" screen.

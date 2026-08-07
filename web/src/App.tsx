@@ -62,7 +62,7 @@ function RequireAdmin({ children }: { children: React.ReactNode }) {
 }
 
 export function App() {
-  const { user, profile, missingProfile, loading } = useAuth();
+  const { user, profile, missingProfile, profileError, loading } = useAuth();
   const location = useLocation();
 
   if (loading) {
@@ -82,15 +82,39 @@ export function App() {
     );
   }
 
+  // The profile could not be read. Never fall through to setup here: an
+  // employee whose record failed to load would be shown the first-run screen
+  // and, on tapping its one button, told the company already exists — which
+  // reads as being locked out of their own account.
+  if (profileError) {
+    return (
+      <div className="centered">
+        <div className="card" style={{ maxWidth: 460 }}>
+          <h1>Could not load your account</h1>
+          <p>
+            You are signed in as <strong>{user.email}</strong>, but we could not read your employee
+            record. This is usually a dropped connection.
+          </p>
+          <button type="button" className="primary block" onClick={() => window.location.reload()}>
+            Try again
+          </button>
+          <div style={{ marginTop: '0.75rem' }}>
+            <SignOutButton />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // Signed in to Firebase Auth but no employee record. Either this is the very
   // first admin running setup, or someone was created in the console by hand.
+  // Rendered directly rather than behind a redirect to /setup. Bouncing the URL
+  // here and then bouncing it back once the profile lands produced a chain of
+  // redirects that could land on top of whatever the new administrator tapped
+  // first, making that tap do nothing. Setup sets the URL to "/" itself when it
+  // succeeds, so by the time the profile arrives there is nothing left to move.
   if (missingProfile) {
-    return (
-      <Routes>
-        <Route path="/setup" element={<Setup />} />
-        <Route path="*" element={<Navigate to="/setup" replace />} />
-      </Routes>
-    );
+    return <Setup />;
   }
 
   if (profile && !profile.active) {

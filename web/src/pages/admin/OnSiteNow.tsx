@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { collection, onSnapshot, orderBy, query, where } from 'firebase/firestore';
 import { db } from '../../firebase';
-import { errorMessage } from '../../lib/api';
+import { errorMessage } from '../../lib/errors';
 import { Banner, Card, EmptyState, FlagList, Modal, Spinner } from '../../components/ui';
 import { ShiftDetail } from '../../components/ShiftDetail';
 import { elapsedSince, fmtDistance, fmtTime } from '../../lib/format';
 import { shortDeviceId } from '../../lib/device';
+import { withTimestamps } from '../../lib/snapshot';
 import type { JobSite, Shift } from '../../lib/types';
 
 /**
@@ -25,7 +26,7 @@ export default function OnSiteNow() {
   useEffect(() => {
     return onSnapshot(
       query(collection(db, 'shifts'), where('status', '==', 'open'), orderBy('clockInAt', 'asc')),
-      (snap) => setShifts(snap.docs.map((d) => ({ ...(d.data() as Shift), id: d.id }))),
+      (snap) => setShifts(snap.docs.map((d) => withTimestamps<Shift>(d))),
       (err) => {
         setShifts([]);
         setError(errorMessage(err));

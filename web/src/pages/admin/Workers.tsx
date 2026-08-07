@@ -1,10 +1,25 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
-import { collection, doc, onSnapshot, orderBy, query, where } from 'firebase/firestore';
+import { collection, onSnapshot, orderBy, query, where } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { useAuth } from '../../auth/AuthProvider';
-import { api, errorMessage } from '../../lib/api';
+import {
+  createWorker,
+  sendWorkerPasswordReset,
+  setWorkerActive,
+  updateWorker,
+} from '../../lib/actions';
+import { errorMessage } from '../../lib/errors';
 import { Banner, Card, EmptyState, Modal, Spinner } from '../../components/ui';
 import type { JobSite, Role, UserDoc } from '../../lib/types';
+
+// Avoids 0/O and 1/l/I, which get misread off a screen and mistyped on a phone.
+const PASSWORD_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
+
+function makePassword(length = 14): string {
+  const bytes = new Uint32Array(length);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => PASSWORD_ALPHABET[b % PASSWORD_ALPHABET.length]).join('');
+}
 
 interface IssuedCredential {
   displayName: string;
@@ -162,20 +177,18 @@ export default function Workers() {
                       void run(async () => {
                         if (
                           !window.confirm(
-                            `Issue a new one-time password for ${worker.displayName}? Their current password stops working immediately.`,
+                            `Email a password reset link to ${worker.email}?`,
                           )
                         )
                           return;
-                        const res = await api.resetWorkerPassword({ uid: worker.uid });
-                        setCredential({
-                          displayName: worker.displayName,
-                          email: worker.email,
-                          password: res.temporaryPassword,
-                        });
+                        await sendWorkerPasswordReset(worker.email);
+                        window.alert(
+                          `A password reset link has been emailed to ${worker.email}.`,
+                        );
                       })
                     }
                   >
-                    Reset password
+                    Send reset link
                   </button>
                   {worker.uid !== profile?.uid && (
                     <button
@@ -186,11 +199,11 @@ export default function Workers() {
                           if (
                             worker.active &&
                             !window.confirm(
-                              `Deactivate ${worker.displayName}? They will be signed out and cannot clock in.`,
+                              `Deactivate ${worker.displayName}? They will no longer be able to clock in or see anything in the app.`,
                             )
                           )
                             return;
-                          await api.setWorkerActive({ uid: worker.uid, active: !worker.active });
+                          await setWorkerActive(worker.uid, !worker.active);
                         })
                       }
                     >
@@ -204,67 +217,7 @@ export default function Workers() {
         )}
       </Card>
 
-      <CompanySettingsCard onError={setError} />
     </>
-  );
-}
-
-/**
- * Features that cost something to run, kept off until the company wants them.
- *
- * A toggle rather than a redeploy, so switching the photo fallback on is a
- * decision an administrator can make the day they turn Cloud Storage on.
- */
-function CompanySettingsCard({ onError }: { onError: (message: string) => void }) {
-  const [photos, setPhotos] = useState<boolean | null>(null);
-  const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    return onSnapshot(
-      doc(db, 'config', 'company'),
-      (snap) => setPhotos(snap.exists() ? snap.data()?.photoFallbackEnabled === true : false),
-      () => setPhotos(false),
-    );
-  }, []);
-
-  if (photos === null) return null;
-
-  return (
-    <Card title="Company settings">
-      <div className="row">
-        <div className="row-head">
-          <span className="title">Photo proof when location fails</span>
-          <span className={`pill ${photos ? 'pill-success' : 'pill-muted'}`}>
-            {photos ? 'On' : 'Off'}
-          </span>
-        </div>
-        <p className="hint" style={{ marginTop: 0 }}>
-          {photos
-            ? 'A worker who cannot get a location fix must take a photo at the job site before their punch is accepted.'
-            : 'Punches that cannot be confirmed by location are recorded and sent to you for approval. Nobody is ever blocked from clocking in.'}
-        </p>
-        <p className="hint">
-          Turning this on needs Cloud Storage switched on in the Firebase console first —
-          that is where the photos are kept. It is the only part of the app that uses it.
-        </p>
-        <div className="row-actions">
-          <button
-            type="button"
-            className={`small ${photos ? '' : 'primary'}`}
-            disabled={busy}
-            onClick={() => {
-              setBusy(true);
-              api
-                .updateCompanySettings({ photoFallbackEnabled: !photos })
-                .catch((err) => onError(errorMessage(err)))
-                .finally(() => setBusy(false));
-            }}
-          >
-            {busy ? 'Saving…' : photos ? 'Turn photo proof off' : 'Turn photo proof on'}
-          </button>
-        </div>
-      </div>
-    </Card>
   );
 }
 
@@ -292,15 +245,12 @@ function WorkerForm({
     setError(null);
     try {
       if (existing) {
-        await api.updateWorker({ uid: existing.uid, displayName, role, jobSiteIds });
+        await updateWorker(existing.uid, { displayName, role, jobSiteIds });
         onSaved();
       } else {
-        const res = await api.createWorker({ email, displayName, role, jobSiteIds });
-        onSaved({
-          displayName: res.displayName,
-          email: res.email,
-          password: res.temporaryPassword,
-        });
+        const generated = makePassword();
+        await createWorker({ email, displayName, role, jobSiteIds, password: generated });
+        onSaved({ displayName, email: email.trim().toLowerCase(), password: generated });
       }
     } catch (err) {
       setError(errorMessage(err));

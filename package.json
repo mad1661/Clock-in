@@ -2,17 +2,22 @@
   "name": "coburn-clock-in",
   "version": "1.0.0",
   "private": true,
-  "description": "Coburn Equipment Rentals time clock — Firebase web app with location verification",
+  "description": "Coburn Equipment Rentals time clock \u2014 Firebase web app with location verification, no Cloud Functions required",
   "scripts": {
     "deploy": "./deploy.sh",
     "deploy:web": "./deploy.sh --hosting-only",
-    "setup": "npm --prefix functions install && npm --prefix web install",
-    "build": "npm --prefix functions run build && npm --prefix web run build",
-    "emulators": "firebase emulators:start --project demo-clockin",
-    "test": "npm --prefix web run test:api",
-    "test:ui": "npm --prefix web run test:ui"
+    "setup": "npm --prefix web install",
+    "build": "npm --prefix web run build",
+    "emulators": "firebase emulators:start --only auth,firestore,hosting --project demo-clockin",
+    "test": "firebase emulators:exec --only firestore --project demo-clockin \"node --test tests/rules.test.mjs\"",
+    "test:ui": "npm --prefix web run test:ui",
+    "test:overtime": "npm --prefix web run test:overtime"
   },
   "engines": {
     "node": ">=20"
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "^4.0.1",
+    "firebase": "^11.10.0"
   }
 }

@@ -8,7 +8,6 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "test:api": "node e2e-smoke.mjs",
     "test:ui": "node ui-smoke.mjs",
     "test:overtime": "node --experimental-strip-types overtime.test.mjs"
   },

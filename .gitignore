@@ -1,14 +1,9 @@
 node_modules/
 dist/
-# Anchored to the functions build output. A bare `lib/` also matches
-# web/src/lib, which silently kept ten source files out of every commit.
-/functions/lib/
 *.local
 .env
 .env.*
 !.env.example
-# Emulator-only overrides; the Firebase CLI never deploys these.
-!functions/.env.local
 .firebase/
 firebase-debug.log*
 firestore-debug.log*

@@ -1,96 +1,322 @@
 rules_version = '2';
 
 // ---------------------------------------------------------------------------
-// Clock-in / Clock-out — Firestore security rules
+// Coburn time clock — Firestore security rules
 //
-// Design principle: the client NEVER writes. Every mutation (creating workers,
-// clocking in/out, editing timesheets) goes through a Cloud Function that runs
-// with the Admin SDK, which bypasses these rules. That means a worker cannot
-// forge a shift, backdate a timestamp, or flip their own `needsReview` flag
-// even with a patched client or a raw REST call.
+// There are no Cloud Functions. The app writes to Firestore directly and THESE
+// RULES ARE THE ENTIRE ENFORCEMENT LAYER. Google evaluates them server-side, so
+// a patched client, a scripted REST call or a rooted phone gets no further than
+// the real app does.
 //
-// These rules therefore only ever grant READ access, scoped as tightly as the
-// data model allows.
+// Runs on the free Spark plan: no Blaze, no Cloud Build, no service accounts.
+//
+// What is still genuinely enforced here:
+//   - every timestamp is `request.time`, the server's clock, never the phone's
+//   - the geofence is recomputed from the job site document on every punch
+//   - a punch that is not verifiably on site MUST be marked for review; the
+//     client cannot declare its own punch clean
+//   - a shift, once written, is immutable apart from the exact transitions below
+//   - roles come from the user document, not from anything the client sends
+//   - a worker cannot open two shifts, edit their own hours, or touch anyone
+//     else's record
+//
+// What cannot be done without a server, stated plainly rather than pretended:
+//   - photo proof (that feature is off)
+//   - disabling an Auth account. A deactivated worker can still sign in, but
+//     every rule below denies them, so they can read and write nothing.
+//   - a nightly sweep for forgotten shifts; an admin closes those by hand
 // ---------------------------------------------------------------------------
 
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // --- Identity -----------------------------------------------------------
+
     function signedIn() {
       return request.auth != null;
     }
 
-    // Role lives in a custom claim, set server-side by the admin functions.
-    // Claims are signed by Firebase Auth and cannot be spoofed by the client.
-    function isAdmin() {
-      return signedIn() && request.auth.token.role == 'admin';
+    function me() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
 
+    function hasProfile() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    // Without Cloud Functions there are no custom claims to sign a role into,
+    // so the role is read from the user document — which only an admin can
+    // write, and which the client cannot forge.
     function isActive() {
-      return signedIn() && request.auth.token.active == true;
+      return hasProfile() && me().active == true;
     }
 
-    function isSelf(uid) {
-      return signedIn() && request.auth.uid == uid;
+    function isAdmin() {
+      return isActive() && me().role == 'admin';
     }
 
-    // --- User directory -----------------------------------------------------
-    // A worker can read their own profile. Admins can read the whole roster.
+    // --- Geometry -----------------------------------------------------------
+    // Rules have no sqrt and no cos. So the fence is compared as SQUARED
+    // distance against squared radius (no sqrt needed), and each job site
+    // carries the metres-per-degree-of-longitude for its own latitude,
+    // written by an admin when the site is created (no cos needed).
+
+    // A fix gets the benefit of its own error bars, capped at 75 m so nobody
+    // can claim a huge accuracy radius to "reach" a distant site.
+    function slack(accuracy) {
+      return accuracy < 75.0 ? accuracy : 75.0;
+    }
+
+    function withinFence(loc, site) {
+      let dNorth = (loc.lat - site.lat) * 111320.0;
+      let dEast = (loc.lng - site.lng) * site.metersPerDegLng;
+      let allowed = site.radiusMeters + slack(loc.accuracy);
+      return (dNorth * dNorth) + (dEast * dEast) <= (allowed * allowed);
+    }
+
+    function siteFor(jobSiteId) {
+      return get(/databases/$(database)/documents/jobSites/$(jobSiteId)).data;
+    }
+
+    // --- Punch validation ---------------------------------------------------
+
+    function locationSane(loc) {
+      return loc.lat is number && loc.lat >= -90 && loc.lat <= 90
+        && loc.lng is number && loc.lng >= -180 && loc.lng <= 180
+        && loc.accuracy is number && loc.accuracy >= 0;
+    }
+
+    /**
+     * A punch is verified only with a fresh, precise fix inside the fence.
+     * Everything else has to be flagged — and because `needsReview` is required
+     * to equal `!verified` below, the client cannot lie about which it is.
+     */
+    function punchVerified(p, site) {
+      return p.method == 'gps'
+        && p.location != null
+        && locationSane(p.location)
+        && p.location.accuracy <= 150
+        && request.time < p.location.capturedAt + duration.value(2, 'm')
+        && p.location.capturedAt < request.time + duration.value(1, 'm')
+        && withinFence(p.location, site);
+    }
+
+    function punchWellFormed(p, jobSiteId) {
+      return p.at == request.time
+        && p.jobSiteId == jobSiteId
+        && (p.method == 'gps' || p.method == 'unverified')
+        && (p.location == null || locationSane(p.location));
+    }
+
+    // --- Company -----------------------------------------------------------
+    // Creating this document is what claims the company. It can only be created
+    // alongside its owner's admin profile, and only while it does not exist —
+    // which is how "only the first person can make themselves an admin" is
+    // expressed with no server to enforce it.
+
+    match /config/company {
+      allow read: if signedIn();
+      allow create: if signedIn()
+        && request.resource.data.ownerUid == request.auth.uid
+        && request.resource.data.createdAt == request.time
+        && getAfter(/databases/$(database)/documents/users/$(request.auth.uid))
+             .data.role == 'admin';
+      allow update: if isAdmin();
+      allow delete: if false;
+    }
+
+    // --- Users --------------------------------------------------------------
+
     match /users/{uid} {
-      allow get: if isSelf(uid) || isAdmin();
+      allow get: if signedIn() && (request.auth.uid == uid || isAdmin());
       allow list: if isAdmin();
-      allow write: if false; // functions only
+
+      // The first administrator — only in the same batch that claims the
+      // company, and only for yourself. Works exactly once, ever.
+      allow create: if signedIn()
+        && request.auth.uid == uid
+        && request.resource.data.uid == uid
+        && request.resource.data.role == 'admin'
+        && request.resource.data.active == true
+        && request.resource.data.createdAt == request.time
+        && !exists(/databases/$(database)/documents/config/company)
+        && existsAfter(/databases/$(database)/documents/config/company);
+
+      // Everyone after that is created by an administrator.
+      allow create: if isAdmin()
+        && request.resource.data.uid == uid
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.role in ['worker', 'admin'];
+
+      // Admins edit anyone; the uid can never move.
+      allow update: if isAdmin()
+        && request.resource.data.uid == resource.data.uid
+        && request.resource.data.updatedAt == request.time;
+
+      // A worker may clear one flag on themselves — that they have changed
+      // their temporary password. Nothing else, and never their own role.
+      allow update: if signedIn()
+        && request.auth.uid == uid
+        && request.resource.data.diff(resource.data)
+             .affectedKeys().hasOnly(['mustChangePassword', 'updatedAt'])
+        && request.resource.data.mustChangePassword == false
+        && request.resource.data.updatedAt == request.time;
+
+      allow delete: if false;
     }
 
     // --- Job sites ----------------------------------------------------------
-    // Any active signed-in user can read job sites; the clock screen needs the
-    // coordinates to show "you are 40 m from the site" before submitting.
-    // Note: geofence enforcement is server-side, so exposing radii is not a
-    // security boundary — it is just UX.
+
     match /jobSites/{siteId} {
-      allow read: if isActive() || isAdmin();
-      allow write: if false; // functions only
+      allow read: if isActive();
+
+      allow create, update: if isAdmin()
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.name.size() <= 120
+        && request.resource.data.lat is number
+        && request.resource.data.lat >= -90 && request.resource.data.lat <= 90
+        && request.resource.data.lng is number
+        && request.resource.data.lng >= -180 && request.resource.data.lng <= 180
+        && request.resource.data.radiusMeters is number
+        && request.resource.data.radiusMeters >= 25
+        && request.resource.data.radiusMeters <= 2000
+        && request.resource.data.metersPerDegLng is number
+        && request.resource.data.metersPerDegLng > 0
+        && request.resource.data.updatedAt == request.time;
+
+      // Retired by setting active:false, never removed — a shift pointing at a
+      // deleted site is worse than one pointing at a stale site.
+      allow delete: if false;
     }
 
-    // --- Shifts (the timesheet record) --------------------------------------
+    // --- Clock state --------------------------------------------------------
+    // One document per worker recording which shift is open. Rules cannot run a
+    // query, so this single document is what makes "you cannot clock in twice"
+    // and the rate limit enforceable.
+
+    match /userState/{uid} {
+      allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
+
+      // The first punch of a worker's life creates this document, and may open a
+      // shift in the same batch. There is deliberately no rate limit here:
+      // nothing exists to rate-limit against, and requiring openShiftId to be
+      // null on create would make that very first clock-in impossible.
+      allow create: if isActive()
+        && request.auth.uid == uid
+        && request.resource.data.lastPunchAt == request.time
+        && (request.resource.data.openShiftId == null
+            || request.resource.data.openShiftId is string);
+
+      // Opening a shift: only from nothing-open, naming a shift created in the
+      // same batch, and no sooner than 30 seconds after the last punch.
+      allow update: if isActive()
+        && request.auth.uid == uid
+        && resource.data.openShiftId == null
+        && request.resource.data.openShiftId is string
+        && request.resource.data.lastPunchAt == request.time
+        && request.time > resource.data.lastPunchAt + duration.value(30, 's');
+
+      // Closing: only the shift that is actually open.
+      allow update: if isActive()
+        && request.auth.uid == uid
+        && resource.data.openShiftId is string
+        && request.resource.data.openShiftId == null
+        && request.resource.data.lastPunchAt == request.time
+        && request.time > resource.data.lastPunchAt + duration.value(30, 's');
+
+      // An admin clearing a stuck shift — the manual stand-in for the nightly
+      // sweep that a scheduled function used to do.
+      allow update: if isAdmin() && request.resource.data.openShiftId == null;
+
+      allow delete: if false;
+    }
+
+    // --- Shifts -------------------------------------------------------------
+
     match /shifts/{shiftId} {
-      // One `read` rule covering both `get` and `list`, and it must reference
-      // `resource.data` in the non-admin branch. Rules are not filters: for a
-      // list query Firestore evaluates this against every document the query
-      // would return and fails the whole query if any one is denied. So a
-      // worker querying `userId == theirOwnUid` succeeds, and any broader query
-      // — including an unfiltered read of the collection — is rejected outright.
-      // Splitting `list` out into a bare `signedIn()` check would hand every
-      // worker the entire company's timesheet.
+      // Rules are not filters: for a list query this is evaluated against every
+      // document the query would return, so a worker querying their own uid
+      // succeeds and any broader query — including an unfiltered read of the
+      // collection — is rejected outright.
       allow read: if isAdmin() || (signedIn() && resource.data.userId == request.auth.uid);
-      allow write: if false; // functions only
-    }
 
-    // --- Company settings ----------------------------------------------------
-    // Readable by anyone signed in so the clock screen can show the right
-    // fallback; the server reads its own copy and never trusts the client's.
-    match /config/{docId} {
-      allow read: if signedIn();
-      allow write: if false; // functions only
-    }
+      // Clocking in. The paired userState update in the same batch is what
+      // proves no other shift was already open.
+      allow create: if isActive()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.status == 'open'
+        && request.resource.data.clockOut == null
+        && request.resource.data.clockOutAt == null
+        && request.resource.data.clockInAt == request.time
+        && punchWellFormed(request.resource.data.clockIn, request.resource.data.jobSiteId)
+        && siteFor(request.resource.data.jobSiteId).active == true
+        // Asymmetric on purpose. Flagging a punch is ALWAYS allowed; claiming a
+        // punch is clean is allowed only when it verifiably is. So the client
+        // can never launder a bad punch, and a borderline fix — a metre outside
+        // the fence, a GPS timestamp that ages out mid-request — falls back to
+        // "recorded, needs review" instead of refusing the worker their hours.
+        && (request.resource.data.needsReview == true
+            || punchVerified(request.resource.data.clockIn,
+                             siteFor(request.resource.data.jobSiteId)))
+        && getAfter(/databases/$(database)/documents/userState/$(request.auth.uid))
+             .data.openShiftId == shiftId;
 
-    // --- Devices ------------------------------------------------------------
-    // The handset register behind the shared-device check. Admin-readable so a
-    // supervisor can see which phones a worker punches from; never client-writable,
-    // otherwise the buddy-punching check could be erased by the person tripping it.
-    match /devices/{deviceId} {
-      allow read: if isAdmin();
-      allow write: if false; // functions only
+      // Clocking out. Your own open shift, once, with the clock-in frozen.
+      allow update: if isActive()
+        && resource.data.userId == request.auth.uid
+        && resource.data.status == 'open'
+        && request.resource.data.status == 'closed'
+        && request.resource.data.userId == resource.data.userId
+        && request.resource.data.jobSiteId == resource.data.jobSiteId
+        && request.resource.data.clockInAt == resource.data.clockInAt
+        && request.resource.data.clockIn == resource.data.clockIn
+        && request.resource.data.clockOutAt == request.time
+        && punchWellFormed(request.resource.data.clockOut, resource.data.jobSiteId)
+        // Same asymmetry as clock-in, plus: a shift already flagged at clock-in
+        // can never be un-flagged by clocking out from inside the fence.
+        && (request.resource.data.needsReview == true
+            || (resource.data.needsReview == false
+                && punchVerified(request.resource.data.clockOut,
+                                 siteFor(resource.data.jobSiteId))))
+        && getAfter(/databases/$(database)/documents/userState/$(request.auth.uid))
+             .data.openShiftId == null;
+
+      // A worker asking for a correction. This only ever records the request —
+      // the hours do not move until a supervisor approves, which is the whole
+      // point of the feature.
+      allow update: if isActive()
+        && resource.data.userId == request.auth.uid
+        && resource.data.status == 'closed'
+        && request.resource.data.diff(resource.data)
+             .affectedKeys().hasOnly(['pendingEdit', 'hasPendingEdit', 'updatedAt'])
+        && request.resource.data.updatedAt == request.time;
+
+      // A supervisor ruling on a shift or correcting its times. The captured
+      // evidence — where they were, on what, how far out — is never editable.
+      allow update: if isAdmin()
+        && request.resource.data.userId == resource.data.userId
+        && request.resource.data.clockIn.location == resource.data.clockIn.location
+        && request.resource.data.clockIn.device == resource.data.clockIn.device
+        && request.resource.data.clockIn.distanceMeters == resource.data.clockIn.distanceMeters
+        && request.resource.data.updatedAt == request.time;
+
+      allow delete: if false;
     }
 
     // --- Audit log ----------------------------------------------------------
-    // Append-only from functions; readable by admins for investigations.
+    // Append-only and stamped with the server clock. Nobody can edit or delete
+    // an entry, including whoever wrote it.
+
     match /auditLogs/{logId} {
       allow read: if isAdmin();
-      allow write: if false; // functions only
+      allow create: if isActive()
+        && request.resource.data.actorUid == request.auth.uid
+        && request.resource.data.at == request.time;
+      allow update, delete: if false;
     }
 
-    // --- Anything else ------------------------------------------------------
     match /{document=**} {
       allow read, write: if false;
     }

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useAuth } from '../auth/AuthProvider';
-import { api, errorMessage } from '../lib/api';
+import { bootstrapCompany } from '../lib/actions';
+import { errorMessage } from '../lib/errors';
 import { Banner } from '../components/ui';
 
 /**
@@ -9,8 +10,9 @@ import { Banner } from '../components/ui';
  * Reached when someone is signed in to Firebase Auth but has no employee
  * record. That is either the very first administrator (who created their own
  * account in the Firebase console) or an account added by hand later. The
- * bootstrap callable only promotes the first case — once any admin exists it
- * refuses — so this page cannot be used to escalate.
+ * security rules only allow the first case — the admin profile can be created
+ * solely in the same batch that claims the company, and that document can only
+ * be created once — so this page cannot be used to escalate.
  */
 export default function Setup() {
   const { user, signOut } = useAuth();
@@ -23,11 +25,13 @@ export default function Setup() {
     setBusy(true);
     setError(null);
     try {
-      await api.bootstrapAdmin({ displayName: displayName.trim() || undefined });
-      // The new custom claim only lands in a refreshed ID token.
-      await user?.getIdToken(true);
+      await bootstrapCompany(displayName);
       setDone(true);
-      window.location.assign('/');
+      // Deliberately no navigation here. The profile arriving is what swaps this
+      // screen for the app, and it happens on its own. Redirecting from this
+      // callback as well used to fire after the screen had already been
+      // replaced, dragging the new administrator back to the clock page from
+      // wherever they had just tapped.
     } catch (err) {
       setError(errorMessage(err));
     } finally {

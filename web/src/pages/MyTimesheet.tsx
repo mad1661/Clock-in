@@ -2,9 +2,11 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { collection, limit, onSnapshot, orderBy, query, where } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../auth/AuthProvider';
-import { api, errorMessage } from '../lib/api';
+import { cancelShiftEdit, requestShiftEdit } from '../lib/actions';
+import { errorMessage } from '../lib/errors';
 import { Banner, Card, EmptyState, FlagList, Modal, Spinner, StatusPill } from '../components/ui';
 import { fmtDate, fmtDateTime, fmtDuration, fmtTime, localDateTimeInput } from '../lib/format';
+import { withTimestamps } from '../lib/snapshot';
 import type { Shift } from '../lib/types';
 
 /** Mirrors POLICY.maxEditRequestAgeDays in functions/src/config.ts. */
@@ -25,7 +27,7 @@ export default function MyTimesheet() {
         orderBy('clockInAt', 'desc'),
         limit(60),
       ),
-      (snap) => setShifts(snap.docs.map((d) => ({ ...(d.data() as Shift), id: d.id }))),
+      (snap) => setShifts(snap.docs.map((d) => withTimestamps<Shift>(d))),
       () => setShifts([]),
     );
   }, [user]);
@@ -126,8 +128,7 @@ function EditState({ shift, onError }: { shift: Shift; onError: (m: string) => v
           disabled={busy}
           onClick={() => {
             setBusy(true);
-            api
-              .cancelShiftEdit({ shiftId: shift.id })
+            cancelShiftEdit(shift)
               .catch((err) => onError(errorMessage(err)))
               .finally(() => setBusy(false));
           }}
@@ -204,11 +205,10 @@ function RequestChangeModal({ shift, onClose }: { shift: Shift; onClose: () => v
 
     setBusy(true);
     try {
-      await api.requestShiftEdit({
-        shiftId: shift.id,
-        clockInAt: new Date(clockInAt).getTime(),
-        ...(clockOutAt ? { clockOutAt: new Date(clockOutAt).getTime() } : {}),
-        reason: reason.trim(),
+      await requestShiftEdit(shift, {
+        clockInAt: new Date(clockInAt),
+        clockOutAt: clockOutAt ? new Date(clockOutAt) : null,
+        reason,
       });
       onClose();
     } catch (err) {

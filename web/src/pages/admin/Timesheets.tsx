@@ -11,7 +11,8 @@ import {
   type QueryConstraint,
 } from 'firebase/firestore';
 import { db } from '../../firebase';
-import { api, errorMessage } from '../../lib/api';
+import { adjustShift } from '../../lib/actions';
+import { errorMessage } from '../../lib/errors';
 import { Banner, Card, EmptyState, Modal, Spinner, StatusPill } from '../../components/ui';
 import { ShiftDetail } from '../../components/ShiftDetail';
 import {
@@ -23,6 +24,7 @@ import {
 } from '../../lib/format';
 import { shortDeviceId } from '../../lib/device';
 import { overtimeByWorker } from '../../lib/overtime';
+import { withTimestamps } from '../../lib/snapshot';
 import type { Shift, UserDoc } from '../../lib/types';
 
 const PAGE_SIZE = 300;
@@ -71,7 +73,7 @@ export default function Timesheets() {
     void getDocs(
       query(collection(db, 'shifts'), ...constraints, orderBy('clockInAt', 'desc'), limit(PAGE_SIZE)),
     )
-      .then((snap) => setShifts(snap.docs.map((d) => ({ ...(d.data() as Shift), id: d.id }))))
+      .then((snap) => setShifts(snap.docs.map((d) => withTimestamps<Shift>(d))))
       .catch((err) => {
         setShifts([]);
         setError(errorMessage(err));
@@ -372,12 +374,14 @@ function AdjustModal({
     }
     setBusy(true);
     try {
-      await api.adjustShift({
-        shiftId: shift.id,
-        clockInAt: new Date(clockInAt).getTime(),
-        ...(clockOutAt ? { clockOutAt: new Date(clockOutAt).getTime() } : {}),
-        note: note.trim(),
-      });
+      await adjustShift(
+        shift,
+        {
+          clockInAt: new Date(clockInAt),
+          clockOutAt: clockOutAt ? new Date(clockOutAt) : null,
+        },
+        note,
+      );
       onClose();
     } catch (err) {
       onError(errorMessage(err));
