@@ -82,6 +82,7 @@ export const POLICY = {
    * short enough that nobody is submitting last week's hours from a cached app.
    */
   maxOfflineAgeMs: 24 * 60 * 60 * 1000,
+
 } as const;
 
 /** Reasons a shift can be flagged for admin review. */
@@ -97,6 +98,7 @@ export const FLAG = {
   SHARED_DEVICE: 'SHARED_DEVICE',
   WORKER_EDITED: 'WORKER_EDITED',
   OFFLINE_SYNCED: 'OFFLINE_SYNCED',
+  NO_LOCATION_PROOF: 'NO_LOCATION_PROOF',
 } as const;
 
 export type FlagCode = (typeof FLAG)[keyof typeof FLAG];

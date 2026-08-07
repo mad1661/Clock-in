@@ -24,6 +24,7 @@ export const FLAG_LABELS: Record<string, string> = {
   SHARED_DEVICE: 'Same device as another worker',
   WORKER_EDITED: 'Times corrected at the worker\u2019s request',
   OFFLINE_SYNCED: 'Saved offline, synced later',
+  NO_LOCATION_PROOF: 'Location could not be confirmed',
 };
 
 const EARTH_RADIUS_METERS = 6371008.8;

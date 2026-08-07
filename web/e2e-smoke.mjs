@@ -171,6 +171,11 @@ async function main() {
   );
   check('rejects a duplicate email', dupe !== null);
 
+  // Photo proof ships off. Sections 5-7 exercise it, so switch it on first;
+  // section 26 switches it back off and checks the default behaviour.
+  await admin.call('updateCompanySettings')({ photoFallbackEnabled: true });
+  check('photo proof can be switched on', true);
+
   console.log('\n=== 4. Worker clocks in on site with a good fix ===');
   const samC = newClient('sam');
   await signInWithEmailAndPassword(samC.auth, sam.email, sam.temporaryPassword);
@@ -822,6 +827,102 @@ async function main() {
       await deleteApp(c.app);
     }),
   );
+
+
+  console.log('\n=== 26. Photos off: unverified punches are recorded, not refused ===');
+  await admin.call('updateCompanySettings')({ photoFallbackEnabled: false });
+  // The server caches settings for a minute; the write clears that cache.
+
+  const gus = await mk('gus@example.com', 'Gus Alvarez');
+  const gusC = newClient('gus');
+  await signInWithEmailAndPassword(gusC.auth, gus.email, gus.temporaryPassword);
+  const gusUid = gusC.auth.currentUser.uid;
+
+  const siteBasic = (
+    await admin.call('upsertJobSite')({
+      name: 'Basic Yard',
+      address: '',
+      lat: SITE.lat,
+      lng: SITE.lng,
+      radiusMeters: 150,
+      active: true,
+    })
+  ).data.id;
+
+  // No location at all — the case that would previously have demanded a photo.
+  const unverified = await gusC.call('clockIn')({
+    jobSiteId: siteBasic,
+    location: null,
+    locationError: { code: 1, message: 'permission-denied' },
+    device: gusC.device,
+  });
+  check(
+    'a punch with no location is accepted, not refused',
+    unverified.data.method === 'unverified',
+    JSON.stringify(unverified.data),
+  );
+  check(
+    'it is flagged as unconfirmed',
+    unverified.data.flags.includes('NO_LOCATION_PROOF'),
+    JSON.stringify(unverified.data.flags),
+  );
+  check('it needs review', unverified.data.needsReview === true);
+
+  const gusShift = (
+    await getDocs(query(collection(admin.db, 'shifts'), where('userId', '==', gusUid)))
+  ).docs[0].data();
+  check('the reported location error is kept', gusShift.clockIn.locationError?.code === 1);
+  check('no photo is attached', gusShift.clockIn.photoPath === null);
+
+  // Off site is the other case that used to demand a photo.
+  await gusC.call('clockOut')({
+    jobSiteId: siteBasic,
+    location: locationPayload(north(SITE, 4000)),
+    device: gusC.device,
+  });
+  const gusClosed = (
+    await getDocs(query(collection(admin.db, 'shifts'), where('userId', '==', gusUid)))
+  ).docs[0].data();
+  check(
+    'an off-site punch is recorded with the distance measured',
+    gusClosed.clockOut.method === 'unverified' && gusClosed.clockOut.distanceMeters > 3900,
+    `method ${gusClosed.clockOut.method}, distance ${gusClosed.clockOut.distanceMeters}`,
+  );
+  check(
+    'and still flags that it was outside the boundary',
+    gusClosed.flags.includes('OUTSIDE_GEOFENCE'),
+    JSON.stringify(gusClosed.flags),
+  );
+
+  console.log('\n=== 27. The site boundary is captured on the punch ===');
+  check(
+    'clock-in records where the site was',
+    Math.abs(gusShift.clockIn.site?.lat - SITE.lat) < 1e-6 &&
+      gusShift.clockIn.site?.radiusMeters === 150,
+    JSON.stringify(gusShift.clockIn.site),
+  );
+
+  // Moving the site must not rewrite the evidence for a shift already recorded.
+  await admin.call('upsertJobSite')({
+    id: siteBasic,
+    name: 'Basic Yard',
+    address: '',
+    lat: SITE.lat + 0.01,
+    lng: SITE.lng,
+    radiusMeters: 400,
+    active: true,
+  });
+  const afterMove = (
+    await getDocs(query(collection(admin.db, 'shifts'), where('userId', '==', gusUid)))
+  ).docs[0].data();
+  check(
+    'moving the site later does not rewrite past evidence',
+    afterMove.clockIn.site?.radiusMeters === 150,
+    `got ${afterMove.clockIn.site?.radiusMeters}`,
+  );
+
+  await signOut(gusC.auth).catch(() => {});
+  await deleteApp(gusC.app);
 
   await Promise.all(
     [admin, samC, aliC, joC, kimC].map(async (c) => {

@@ -16,6 +16,7 @@ import { POLICY, FLAG, type FlagCode } from './config';
 import { distanceMeters, parseLocation, MAX_PLAUSIBLE_SPEED_MPS } from './geo';
 import { verifyPhoto } from './photo';
 import { registerDevice, sanitiseDevice } from './device';
+import { getCompanySettings } from './settings';
 import type { ClockRequest, JobSiteDoc, PunchRecord, ShiftDoc } from './types';
 
 /** Structured detail attached to a rejection so the UI can react precisely. */
@@ -57,6 +58,7 @@ async function buildPunch(
 ): Promise<PunchRecord> {
   const serverNowMs = serverNow.getTime();
   const flags: FlagCode[] = [];
+  const settings = await getCompanySettings();
 
   // A punch captured with no signal is replayed from the phone later, so its
   // GPS fix and its timestamp are both older than "now" through no fault of the
@@ -139,6 +141,7 @@ async function buildPunch(
         capturedAt: Timestamp.fromMillis(location.capturedAt),
       },
       locationError: null,
+      site: { lat: site.lat, lng: site.lng, radiusMeters: site.radiusMeters },
       distanceMeters: Math.round(distance ?? 0),
       withinGeofence: true,
       photoPath: null,
@@ -150,19 +153,65 @@ async function buildPunch(
     };
   }
 
-  // --- GPS was not good enough: the photo path is the only way through -------
+  // --- GPS was not good enough -----------------------------------------------
   if (!data.photoPath) {
-    const detail: RejectionDetail = {
-      reason: 'PHOTO_REQUIRED',
-      flags,
-      distanceMeters: distance === null ? null : Math.round(distance),
-      allowedRadiusMeters: site.radiusMeters,
-      accuracyMeters: location && Number.isFinite(location.accuracy)
-        ? Math.round(location.accuracy)
-        : null,
+    if (settings.photoFallbackEnabled) {
+      const detail: RejectionDetail = {
+        reason: 'PHOTO_REQUIRED',
+        flags,
+        distanceMeters: distance === null ? null : Math.round(distance),
+        allowedRadiusMeters: site.radiusMeters,
+        accuracyMeters: location && Number.isFinite(location.accuracy)
+          ? Math.round(location.accuracy)
+          : null,
+        jobSiteName: site.name,
+      };
+      throw new HttpsError('failed-precondition', photoRequiredMessage(flags, site.name), detail);
+    }
+
+    // Photos are switched off, so there is no second form of proof to ask for.
+    // Record the punch rather than refuse it: a worker whose GPS fails would
+    // otherwise be unable to clock in at all, and losing real hours is a worse
+    // outcome than an entry a supervisor has to confirm. Everything we did
+    // observe is kept, and the flag makes the gap explicit.
+    flags.push(FLAG.NO_LOCATION_PROOF);
+    const rawErr = data.locationError;
+    return {
+      at: punchAt,
+      method: 'unverified',
+      jobSiteId: site.id,
       jobSiteName: site.name,
+      location: location
+        ? {
+            lat: location.lat,
+            lng: location.lng,
+            accuracy: Number.isFinite(location.accuracy) ? location.accuracy : -1,
+            capturedAt: Timestamp.fromMillis(location.capturedAt || serverNowMs),
+          }
+        : null,
+      locationError: rawErr
+        ? {
+            code: typeof rawErr.code === 'number' ? rawErr.code : null,
+            message: optionalString(rawErr.message, 200),
+          }
+        : null,
+      site: { lat: site.lat, lng: site.lng, radiusMeters: site.radiusMeters },
+      distanceMeters: distance === null ? null : Math.round(distance),
+      withinGeofence,
+      photoPath: null,
+      flags,
+      ip: callerIp(request),
+      device,
+      note: optionalString(data.note),
+      offline: offlineRecord,
     };
-    throw new HttpsError('failed-precondition', photoRequiredMessage(flags, site.name), detail);
+  }
+
+  if (!settings.photoFallbackEnabled) {
+    throw new HttpsError(
+      'failed-precondition',
+      'Photo proof is not switched on for this company.',
+    );
   }
 
   const photo = await verifyPhoto(caller.uid, data.photoPath, serverNowMs);
@@ -188,6 +237,7 @@ async function buildPunch(
           message: optionalString(rawError.message, 200),
         }
       : null,
+    site: { lat: site.lat, lng: site.lng, radiusMeters: site.radiusMeters },
     distanceMeters: distance === null ? null : Math.round(distance),
     withinGeofence,
     photoPath: photo.path,

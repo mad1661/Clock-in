@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
-import { collection, onSnapshot, orderBy, query, where } from 'firebase/firestore';
+import { collection, doc, onSnapshot, orderBy, query, where } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { useAuth } from '../../auth/AuthProvider';
 import { api, errorMessage } from '../../lib/api';
@@ -203,7 +203,68 @@ export default function Workers() {
           </ul>
         )}
       </Card>
+
+      <CompanySettingsCard onError={setError} />
     </>
+  );
+}
+
+/**
+ * Features that cost something to run, kept off until the company wants them.
+ *
+ * A toggle rather than a redeploy, so switching the photo fallback on is a
+ * decision an administrator can make the day they turn Cloud Storage on.
+ */
+function CompanySettingsCard({ onError }: { onError: (message: string) => void }) {
+  const [photos, setPhotos] = useState<boolean | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    return onSnapshot(
+      doc(db, 'config', 'company'),
+      (snap) => setPhotos(snap.exists() ? snap.data()?.photoFallbackEnabled === true : false),
+      () => setPhotos(false),
+    );
+  }, []);
+
+  if (photos === null) return null;
+
+  return (
+    <Card title="Company settings">
+      <div className="row">
+        <div className="row-head">
+          <span className="title">Photo proof when location fails</span>
+          <span className={`pill ${photos ? 'pill-success' : 'pill-muted'}`}>
+            {photos ? 'On' : 'Off'}
+          </span>
+        </div>
+        <p className="hint" style={{ marginTop: 0 }}>
+          {photos
+            ? 'A worker who cannot get a location fix must take a photo at the job site before their punch is accepted.'
+            : 'Punches that cannot be confirmed by location are recorded and sent to you for approval. Nobody is ever blocked from clocking in.'}
+        </p>
+        <p className="hint">
+          Turning this on needs Cloud Storage switched on in the Firebase console first —
+          that is where the photos are kept. It is the only part of the app that uses it.
+        </p>
+        <div className="row-actions">
+          <button
+            type="button"
+            className={`small ${photos ? '' : 'primary'}`}
+            disabled={busy}
+            onClick={() => {
+              setBusy(true);
+              api
+                .updateCompanySettings({ photoFallbackEnabled: !photos })
+                .catch((err) => onError(errorMessage(err)))
+                .finally(() => setBusy(false));
+            }}
+          >
+            {busy ? 'Saving…' : photos ? 'Turn photo proof off' : 'Turn photo proof on'}
+          </button>
+        </div>
+      </div>
+    </Card>
   );
 }
 

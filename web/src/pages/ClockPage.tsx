@@ -334,11 +334,15 @@ export default function ClockPage() {
           kind={result.needsReview ? 'warning' : 'success'}
           title={result.durationMinutes === undefined ? 'Clocked in' : 'Clocked out'}
         >
-          {result.method === 'gps'
-            ? `Location confirmed${
-                result.distanceMeters != null ? ` — ${fmtDistance(result.distanceMeters)} from the site` : ''
-              }.`
-            : 'Recorded with a photo instead of location.'}
+          {result.method === 'gps' &&
+            `Location confirmed${
+              result.distanceMeters != null
+                ? ` — ${fmtDistance(result.distanceMeters)} from the site`
+                : ''
+            }.`}
+          {result.method === 'photo' && 'Recorded with a photo instead of location.'}
+          {result.method === 'unverified' &&
+            'Your hours are recorded. We could not confirm your location this time.'}
           {result.needsReview && (
             <>
               {' '}

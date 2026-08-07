@@ -66,6 +66,14 @@ service cloud.firestore {
       allow write: if false; // functions only
     }
 
+    // --- Company settings ----------------------------------------------------
+    // Readable by anyone signed in so the clock screen can show the right
+    // fallback; the server reads its own copy and never trusts the client's.
+    match /config/{docId} {
+      allow read: if signedIn();
+      allow write: if false; // functions only
+    }
+
     // --- Devices ------------------------------------------------------------
     // The handset register behind the shared-device check. Admin-readable so a
     // supervisor can see which phones a worker punches from; never client-writable,

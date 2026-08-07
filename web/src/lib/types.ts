@@ -61,11 +61,13 @@ export interface EditOutcome {
 
 export interface PunchRecord {
   at: Timestamp;
-  method: 'gps' | 'photo';
+  method: 'gps' | 'photo' | 'unverified';
   jobSiteId: string;
   jobSiteName: string;
   location: { lat: number; lng: number; accuracy: number; capturedAt: Timestamp } | null;
   locationError: { code: number | null; message: string | null } | null;
+  /** The site's position and radius as they were at the moment of the punch. */
+  site: { lat: number; lng: number; radiusMeters: number } | null;
   distanceMeters: number | null;
   withinGeofence: boolean | null;
   photoPath: string | null;

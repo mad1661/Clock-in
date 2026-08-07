@@ -24,7 +24,7 @@ export interface ClockPayload {
 export interface ClockResult {
   shiftId: string;
   at: number;
-  method: 'gps' | 'photo';
+  method: 'gps' | 'photo' | 'unverified';
   jobSiteName?: string;
   distanceMeters?: number | null;
   durationMinutes?: number;
@@ -79,6 +79,10 @@ export const api = {
     { shiftId: string; decision: 'approved' | 'rejected'; note?: string },
     { ok: boolean }
   >('reviewShiftEdit'),
+  updateCompanySettings: call<
+    { photoFallbackEnabled: boolean },
+    { ok: boolean; photoFallbackEnabled: boolean }
+  >('updateCompanySettings'),
   adjustShift: call<
     { shiftId: string; clockInAt?: number; clockOutAt?: number; note: string },
     { ok: boolean }

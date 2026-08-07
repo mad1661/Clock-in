@@ -108,13 +108,14 @@ export default function OnSiteNow() {
                   <div className="row-meta">
                     <span>Since {fmtTime(shift.clockInAt)}</span>
                     <span>
-                      {shift.clockIn.method === 'gps'
-                        ? `Location confirmed${
-                            shift.clockIn.distanceMeters != null
-                              ? ` — ${fmtDistance(shift.clockIn.distanceMeters)} out`
-                              : ''
-                          }`
-                        : 'Photo evidence'}
+                      {shift.clockIn.method === 'gps' &&
+                        `Location confirmed${
+                          shift.clockIn.distanceMeters != null
+                            ? ` — ${fmtDistance(shift.clockIn.distanceMeters)} out`
+                            : ''
+                        }`}
+                      {shift.clockIn.method === 'photo' && 'Photo evidence'}
+                      {shift.clockIn.method === 'unverified' && 'Location unconfirmed'}
                     </span>
                   </div>
                   <div className="device-line">

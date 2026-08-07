@@ -712,6 +712,31 @@ a.small {
   color: var(--text);
 }
 
+/* --- Maps --------------------------------------------------------------- */
+.sitemap {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--surface-2);
+}
+/* Leaflet's own panes default to z-index 400-700, which would sit over the
+   modal backdrop (50). Keep the whole map below our chrome. */
+.sitemap .leaflet-pane,
+.sitemap .leaflet-top,
+.sitemap .leaflet-bottom {
+  z-index: 1;
+}
+.sitemap .leaflet-container {
+  font: inherit;
+  background: var(--surface-2);
+}
+.sitemap .leaflet-control-attribution {
+  font-size: 0.62rem;
+  background: rgba(255, 255, 255, 0.82);
+  color: #333;
+}
+
 /* --- Misc --------------------------------------------------------------- */
 .steps {
   margin: 0.5rem 0 0;

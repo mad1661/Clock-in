@@ -21,3 +21,5 @@ export { clockIn, clockOut } from './clock';
 export { reviewShift, adjustShift, autoCloseStaleShifts } from './review';
 
 export { requestShiftEdit, cancelShiftEdit, reviewShiftEdit } from './shiftEdits';
+
+export { updateCompanySettings } from './settings';

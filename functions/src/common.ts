@@ -112,7 +112,8 @@ export type AuditAction =
   | 'shift.edit_withdrawn'
   | 'shift.edit_reviewed'
   | 'shift.auto_close'
-  | 'admin.bootstrap';
+  | 'admin.bootstrap'
+  | 'settings.update';
 
 /**
  * Append-only audit trail. Written with the Admin SDK so it is unreachable from

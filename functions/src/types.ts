@@ -105,7 +105,11 @@ export interface ClockRequest {
 /** The verified, server-computed record of one clock action. */
 export interface PunchRecord {
   at: Timestamp;
-  method: 'gps' | 'photo';
+  /**
+   * How the punch was backed up. 'unverified' means neither a usable fix nor a
+   * photo — accepted so the hours are not lost, always flagged for review.
+   */
+  method: 'gps' | 'photo' | 'unverified';
   jobSiteId: string;
   jobSiteName: string;
   location: {
@@ -115,6 +119,13 @@ export interface PunchRecord {
     capturedAt: Timestamp;
   } | null;
   locationError: { code: number | null; message: string | null } | null;
+  /**
+   * Where the job site was, and how big its boundary was, at the moment of the
+   * punch. Copied rather than looked up later: an admin can move a site or
+   * change its radius, and the evidence for a shift has to keep showing what
+   * the worker was actually measured against.
+   */
+  site: { lat: number; lng: number; radiusMeters: number } | null;
   distanceMeters: number | null;
   withinGeofence: boolean | null;
   photoPath: string | null;

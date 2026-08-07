@@ -24,9 +24,9 @@ straight to the right page.
 3. **[Create the Firestore database](https://console.firebase.google.com/project/clockit-bc990/firestore)**
    — Create database → **Production mode** → region `us-west1` (closest to
    Chino). The region is permanent.
-4. **[Turn on Storage](https://console.firebase.google.com/project/clockit-bc990/storage)**
-   — Get started → **Production mode** → same region as Firestore. This is where
-   the proof-of-presence photos go, and it needs Blaze from step 1.
+4. **Storage — skip it.** It only backs the photo fallback, which ships switched
+   off. Add it later from **Workers → Company settings** when you want that
+   upgrade; the deploy handles its absence and tells you.
 
 If any of these are already done, skip them. Click **Next** when they are all on.
 
@@ -104,9 +104,10 @@ Click **Next**.
 
 ## Set up your crew
 
-1. **Job sites → + Add site.** Stand in the middle of the site and tap
-   **Use my current location**, or paste coordinates. 150 m is a sensible
-   boundary — too tight and honest workers get pushed to the photo fallback.
+1. **Job sites → + Add site.** Search the address, tap the satellite map, or
+   stand in the middle of the site and tap **Use my current location**. The blue
+   circle is the boundary, drawn to scale — check it covers the working area.
+   150 m suits most sites; too tight and honest workers keep getting flagged.
 2. **Workers → + Add employee.** Each one gets a one-time password shown to you
    **once** — copy it before closing the dialog. Nothing is emailed.
 3. Tell the crew to open the site and **Add to Home Screen**. It then opens like

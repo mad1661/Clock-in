@@ -49,11 +49,14 @@ the defaults on deploy.
 
 > The region is permanent. Storage should match it in the next step.
 
-### 5. Turn on Storage
+### 5. Storage — not needed yet
 
-**Build → Storage → Get started → Production mode →** same region as Firestore.
+Cloud Storage only backs the photo fallback, which ships switched off. Skip it
+to start; the deploy notices there is no bucket and carries on.
 
-This is where the proof-of-presence photos go. It needs Blaze from step 2.
+To add it later: **Build → Storage → Get started → Production mode →** same
+region as Firestore, then flip **Workers → Company settings → photo proof** on
+in the app.
 
 ---
 
@@ -247,6 +250,12 @@ against your name.
 **Who is on site right now?** The **On site** tab. Live — a clock-in shows up
 within a second — grouped by job site, with a running timer per worker and a
 warning on anyone past ten hours who has probably forgotten to clock out.
+
+**Turning photo proof on.** Once Cloud Storage is enabled in the console, go to
+**Workers → Company settings** and switch it on. With it off, punches that
+cannot be confirmed by location are recorded and flagged for you; with it on, a
+worker must take a photo at the job site before the punch is accepted. Either
+way nobody is blocked from clocking in.
 
 **Payroll.** Timesheets → set the dates → **Export CSV**. The export includes a
 California overtime summary per worker (regular / 1.5x / 2x), worked out week by

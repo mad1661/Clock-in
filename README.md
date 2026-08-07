@@ -41,10 +41,9 @@ crew usage sits inside the free monthly allowance; SETUP.md explains.
 - Sign in with an email and password their administrator gives them.
 - Pick a job site and tap one button to clock in or out.
 - The app takes a GPS fix and confirms they are inside the site's boundary.
-- If it cannot — permission off, no signal, or genuinely off site — the app
-  explains why, offers to retry, and otherwise asks for a photo taken at the
-  job site. **The punch is still recorded**; it goes to the administrator for
-  approval rather than being lost.
+- If it cannot — permission off, no signal, or genuinely off site — **the punch
+  is still recorded** and sent to a supervisor to approve. Nobody is ever left
+  unable to clock in because their phone let them down.
 - A live timer while on shift, and their own timesheet.
 - **No signal? The punch is not lost.** It is saved on the phone and sent in on
   its own the moment a connection returns — the worker can close the app.
@@ -57,8 +56,10 @@ crew usage sits inside the free monthly allowance; SETUP.md explains.
 
 - Create worker logins. A one-time password is generated and shown once.
 - Reset passwords, deactivate people, promote to administrator.
-- Define job sites: name, address, coordinates and a boundary radius, with a
-  "use my current location" button for setting it while standing on site.
+- Define job sites on Esri satellite imagery: search an address, tap the map, or
+  stand on site and tap "use my current location". The boundary is drawn to
+  scale over the actual ground, so you can see the radius covers the pad and not
+  the neighbour's yard.
 - Assign workers to specific sites, or leave them free to use any site.
 - A review queue of everything the app could not verify automatically, with the
   full evidence: both punches, coordinates, a map link, the photo, distance,
@@ -107,10 +108,20 @@ calling the API by hand gets you no further than the normal app does.
 | Site assignment | A worker restricted to certain sites cannot punch at others. |
 | Account still active | Re-read from Firestore on every call, because a custom claim in an ID token can be up to an hour stale. |
 
-### The photo fallback
+### When location cannot be confirmed
 
-When the GPS evidence is not good enough, the server refuses the punch with a
-structured `PHOTO_REQUIRED` response, and the app switches to the photo path.
+Two behaviours, chosen by an administrator under **Workers → Company settings**.
+
+**Photo proof off (the default).** The punch is recorded, flagged
+`NO_LOCATION_PROOF`, and queued for approval. Everything that *was* observed —
+the best fix, the reported error, the distance, the device — is kept. This is
+the deliberate choice: refusing would mean a worker whose GPS dies cannot clock
+in at all, and losing real hours is a worse failure than an entry a supervisor
+confirms. It also needs no Cloud Storage, so a pilot can run without it.
+
+**Photo proof on.** The upgrade, once Cloud Storage is switched on. The server
+refuses the punch with a structured `PHOTO_REQUIRED` response and the app
+switches to the photo path.
 It first shows device-specific instructions for turning location back on —
 that is quicker for everyone — and offers a retry. If location genuinely will
 not work, the worker takes a photo and the punch is recorded, flagged, and
@@ -199,6 +210,29 @@ Only a request that never got an answer is queued. A punch the server actually
 refused — outside the geofence, say — is never retried behind the worker's
 back.
 
+### Maps
+
+Job sites and punch evidence are drawn on **Esri World Imagery**. Satellite
+rather than a street map on purpose: a job site is a patch of dirt a road map
+renders as nothing, and a geofence radius is an abstract number until you see it
+drawn over the actual pad.
+
+Two places it earns its keep: setting a site's centre and radius, and reviewing
+a flagged punch — "412 m from the site" is something a supervisor has to take on
+trust, but drawn to scale they can see whether that is the far end of the same
+yard or somebody's driveway.
+
+Address lookup goes through Esri's World Geocoding Service. It works without a
+key for display-only results; set `VITE_ARCGIS_API_KEY` to use the ArcGIS
+location platform basemaps, which is the supported route for production and has
+a free monthly allowance.
+
+Rendered with Leaflet rather than the full ArcGIS SDK — 42 KB against several
+megabytes — and lazy-loaded, so the crew's clock screen never downloads any of
+it. The site position and radius are copied onto each punch at the moment it
+happens, so moving a site later never rewrites the evidence for a shift already
+recorded.
+
 ### Everything ends up in front of a human
 
 Anything unverified is flagged, never silently accepted and never silently
@@ -235,6 +269,7 @@ functions/src/
   photo.ts               Server-side photo checks and single-use claims
   device.ts              Handset labelling and the shared-device check
   shiftEdits.ts          Worker correction requests and supervisor approval
+  settings.ts            Company settings an admin can toggle without a deploy
   geo.ts                 Haversine distance, input validation
   adminUsers.ts          Worker accounts, roles, passwords, bootstrap
   jobSites.ts            Job site management
@@ -250,6 +285,8 @@ web/src/
   lib/offlineQueue.ts    IndexedDB queue for punches made with no signal
   lib/syncQueue.ts       Drains the queue when the connection returns
   lib/overtime.ts        California daily and weekly overtime
+  lib/basemap.ts         Esri imagery and address lookup
+  components/SiteMap.tsx Job site and punch evidence map (lazy-loaded)
   pages/admin/OnSiteNow.tsx  Live board of who is clocked in
   auth/AuthProvider.tsx  Session, live profile, claim refresh
 ```
@@ -293,8 +330,8 @@ Both suites run against a **freshly started** emulator suite — the emulators
 hold their data in memory, and both tests seed their own.
 
 ```bash
-npm test                             # 109 checks: server logic and security rules
-npm run test:ui                      # 47 checks: browser flows via Playwright
+npm test                             # 119 checks: server logic and security rules
+npm run test:ui                      # 51 checks: browser flows via Playwright
 npm --prefix web run test:overtime   # 10 checks: California overtime, no emulator needed
 ```
 

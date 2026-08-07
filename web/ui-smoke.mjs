@@ -52,6 +52,8 @@ await httpsCallable(seedFns, 'upsertJobSite')({
   radiusMeters: 150,
   active: true,
 });
+await httpsCallable(seedFns, 'updateCompanySettings')({ photoFallbackEnabled: true });
+
 const seeded = (
   await httpsCallable(seedFns, 'createWorker')({
     email: 'pat@example.com',
@@ -443,7 +445,43 @@ console.log('\n=== On-site board and offline flag ===');
   await ctx.close();
 }
 
-// --- 9. Worker cannot reach admin routes -----------------------------------
+// --- 9. The job site map ----------------------------------------------------
+console.log('\n=== Job site map ===');
+{
+  const { ctx, page } = await newPage({ geo: { ...SITE, accuracy: 12 } });
+  await login(page, ADMIN);
+  await page.getByRole('link', { name: 'Job sites' }).click();
+  await page.getByRole('button', { name: '+ Add site' }).waitFor({ timeout: 20000 });
+  await page.getByRole('button', { name: '+ Add site' }).click();
+  await page.waitForSelector('.modal', { timeout: 15000 });
+
+  await page.locator('.sitemap.leaflet-container').waitFor({ timeout: 25000 });
+  check('the map loads in the job site form', true);
+  check(
+    'address search is offered',
+    await page.getByLabel('Find by address').isVisible(),
+  );
+
+  // Tapping the map must fill the coordinates in.
+  const box = await page.locator('.sitemap').boundingBox();
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  await page.waitForTimeout(400);
+  const lat = await page.locator('#s-lat').inputValue();
+  const lng = await page.locator('#s-lng').inputValue();
+  check('tapping the map sets the coordinates', Number.isFinite(Number(lat)) && lat !== '' && lng !== '', `lat "${lat}" lng "${lng}"`);
+
+  // And the geofence circle must be drawn to scale.
+  await page.locator('#s-radius').fill('300');
+  await page.waitForTimeout(500);
+  check(
+    'the boundary circle is drawn',
+    (await page.locator('.sitemap .leaflet-overlay-pane path').count()) > 0,
+  );
+  await shot(page, `ui-21-site-map.png`, true);
+  await ctx.close();
+}
+
+// --- 10. Worker cannot reach admin routes ----------------------------------
 console.log('\n=== Worker cannot reach admin routes ===');
 {
   const { ctx, page } = await newPage({ geo: { ...SITE, accuracy: 12 } });

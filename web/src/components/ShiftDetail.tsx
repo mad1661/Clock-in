@@ -1,10 +1,13 @@
-import { useEffect, useState } from 'react';
+import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import { getDownloadURL, ref } from 'firebase/storage';
 import { storage } from '../firebase';
-import { fmtDateTime, fmtDistance, fmtDuration } from '../lib/format';
+import { fmtDateTime, fmtDistance, fmtDuration, fmtTime } from '../lib/format';
 import { shortDeviceId } from '../lib/device';
-import { FlagList } from './ui';
+import { FlagList, Spinner } from './ui';
 import type { PunchRecord, Shift } from '../lib/types';
+import type { MapPin } from './SiteMap';
+
+const SiteMap = lazy(() => import('./SiteMap'));
 
 /**
  * Full evidence view for one shift: both punches, how each was verified, and
@@ -36,6 +39,8 @@ export function ShiftDetail({ shift }: { shift: Shift }) {
 
       <FlagList flags={shift.flags} />
 
+      <ShiftMap shift={shift} />
+
       <PunchDetail label="Clocked in" punch={shift.clockIn} />
       {shift.clockOut ? (
         <PunchDetail label="Clocked out" punch={shift.clockOut} />
@@ -52,13 +57,73 @@ export function ShiftDetail({ shift }: { shift: Shift }) {
   );
 }
 
+/**
+ * Where the punches happened, against the site boundary.
+ *
+ * "412 m from the site" is a number a supervisor has to take on trust. Drawn on
+ * imagery, with the boundary circle to scale, they can see whether that is the
+ * far end of the same yard or somebody's driveway — which is the actual
+ * judgement being asked of them.
+ */
+function ShiftMap({ shift }: { shift: Shift }) {
+  const pins = useMemo(() => {
+    const out: MapPin[] = [];
+    if (shift.clockIn.location) {
+      out.push({
+        lat: shift.clockIn.location.lat,
+        lng: shift.clockIn.location.lng,
+        accuracy: shift.clockIn.location.accuracy,
+        label: `Clocked in ${fmtTime(shift.clockIn.at)}`,
+        kind: 'in',
+      });
+    }
+    if (shift.clockOut?.location) {
+      out.push({
+        lat: shift.clockOut.location.lat,
+        lng: shift.clockOut.location.lng,
+        accuracy: shift.clockOut.location.accuracy,
+        label: `Clocked out ${fmtTime(shift.clockOut.at)}`,
+        kind: 'out',
+      });
+    }
+    return out;
+  }, [shift]);
+
+  // Shifts recorded before the site position was captured fall back to
+  // centring on the clock-in, which is still a useful picture.
+  const centre = shift.clockIn.site ?? shift.clockOut?.site ?? null;
+
+  // Nothing to draw when neither punch produced a position.
+  if (pins.length === 0) return null;
+
+  return (
+    <div>
+      <Suspense fallback={<Spinner label="Loading map…" />}>
+        <SiteMap
+          site={centre ?? pins[0]}
+          radiusMeters={centre?.radiusMeters}
+          pins={pins}
+          height={230}
+        />
+      </Suspense>
+      <p className="hint">
+        Green is the clock-in, red the clock-out; the dashed ring is how precise that fix
+        claimed to be. The blue circle is the site boundary as it stood at the time.
+        Imagery from Esri.
+      </p>
+    </div>
+  );
+}
+
 function PunchDetail({ label, punch }: { label: string; punch: PunchRecord }) {
   return (
     <div className="row">
       <div className="row-head">
         <span className="title">{label}</span>
         <span className={`pill ${punch.method === 'gps' ? 'pill-success' : 'pill-warning'}`}>
-          {punch.method === 'gps' ? 'Location verified' : 'Photo evidence'}
+          {punch.method === 'gps' && 'Location verified'}
+          {punch.method === 'photo' && 'Photo evidence'}
+          {punch.method === 'unverified' && 'Unconfirmed'}
         </span>
       </div>
 

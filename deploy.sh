@@ -202,17 +202,19 @@ fi
 ok "Firestore rules and indexes deployed"
 
 step "Deploying storage rules"
-if ! firebase deploy --only storage --project "$PROJECT"; then
-  die "Storage deploy failed.
-  Most likely Cloud Storage has not been set up yet. New projects need the
-  Blaze plan before Firebase will create the default bucket.
-  Fix: 1. https://console.firebase.google.com/project/$PROJECT/usage/details
-          → upgrade to Blaze (pay as you go)
-       2. https://console.firebase.google.com/project/$PROJECT/storage
-          → Get started → Production mode → same region as Firestore
-  Then re-run ./deploy.sh — everything already done will be skipped."
+# Storage only backs the photo fallback, which ships switched off. A project
+# without a bucket is a supported setup, not a failure — say so and carry on.
+if firebase deploy --only storage --project "$PROJECT" 2>/dev/null; then
+  ok "Storage rules deployed"
+else
+  warn "Skipped storage rules — no Cloud Storage bucket on this project."
+  info "That is fine: the photo fallback is off by default, and the app does"
+  info "not touch Storage without it. To switch photos on later:"
+  info "  1. https://console.firebase.google.com/project/$PROJECT/storage"
+  info "     → Get started → Production mode (needs the Blaze plan)"
+  info "  2. put PHOTO_FALLBACK=on in functions/.env"
+  info "  3. re-run ./deploy.sh"
 fi
-ok "Storage rules deployed"
 
 step "Deploying Cloud Functions (this is the slow one)"
 if ! firebase deploy --only functions --project "$PROJECT"; then
