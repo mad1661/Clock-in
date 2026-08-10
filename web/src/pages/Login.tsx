@@ -21,8 +21,34 @@ function friendlyAuthError(err: unknown): string {
         return 'No connection. Check your signal and try again.';
       case 'auth/invalid-email':
         return 'That does not look like a valid email address.';
+
+      // The next three are misconfiguration, not a bad password. Saying "could
+      // not sign you in" for them sends someone off retyping a password that
+      // was never the problem, so each one names the thing to go and fix.
+      case 'auth/api-key-not-valid':
+      case 'auth/api-key-not-valid.-please-pass-a-valid-api-key.':
+      case 'auth/invalid-api-key':
+        return (
+          'This site was built with a Firebase API key that the project does not ' +
+          'recognise. Nobody can sign in until it is rebuilt with the current key: ' +
+          'run ./deploy.sh, which reads the key from the project itself.'
+        );
+      case 'auth/operation-not-allowed':
+        return (
+          'Email and password sign-in is switched off for this Firebase project. ' +
+          'Turn it on under Authentication → Sign-in method.'
+        );
+      case 'auth/unauthorized-domain':
+        return (
+          'This web address is not on the project\u2019s authorised domain list. ' +
+          'Add it under Authentication → Settings → Authorised domains.'
+        );
+
       default:
-        return 'Could not sign you in. Please try again.';
+        // The code is shown on purpose. A generic message here means the only
+        // way to find out what actually went wrong is the browser console,
+        // which is not somewhere a crew on a job site is going to look.
+        return `Could not sign you in (${err.code}). Please try again.`;
     }
   }
   return 'Could not sign you in. Please try again.';

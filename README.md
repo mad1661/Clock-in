@@ -19,11 +19,15 @@ and the website.
 or, if you would rather run it yourself:
 
 ```bash
+npm --prefix web install
 npm --prefix web run build
 firebase deploy --only hosting,firestore --project clockit-bc990
 ```
 
-Re-run either any time; nothing they do is destructive.
+Re-run either any time; nothing they do is destructive. The difference is that
+`deploy.sh` re-reads your Firebase config from the project and rewrites
+`web/.env`, where building by hand trusts whatever is already there — so if
+sign-in ever fails with *API key not valid*, use `deploy.sh`.
 
 Once deployed, the app lives at **https://clockit-bc990.web.app**.
 

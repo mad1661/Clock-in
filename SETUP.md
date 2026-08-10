@@ -133,6 +133,25 @@ npm run test:overtime      # California overtime maths
 **"Could not continue" on the setup screen** — the company is already claimed.
 See step 4.
 
+**"API key not valid" / nobody can sign in** — the site was built with a Firebase
+API key the project no longer recognises, usually because the browser key was
+deleted or regenerated. Note that the **browser API key** (Google Cloud console →
+APIs & Services → Credentials, named *Browser key (auto created by Firebase)*)
+is a different thing from a **service account key** (Firebase console → Project
+settings → Service accounts); deleting the wrong one causes exactly this.
+
+Fix it by rebuilding with the project's current key:
+
+```bash
+./deploy.sh
+```
+
+`deploy.sh` reads the config out of the project with `firebase apps:sdkconfig`
+and rewrites `web/.env` every time, so it repairs this on its own. Building by
+hand does **not** — it uses whatever `web/.env` already says. If the key is
+genuinely gone, recreate it in the Google Cloud console under APIs & Services →
+Credentials → Create credentials → API key, then run `./deploy.sh`.
+
 **A worker cannot clock in at a site** — check the site is **active**, and that
 they are either unassigned (which means all sites) or assigned to that one.
 
