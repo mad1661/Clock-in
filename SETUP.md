@@ -140,17 +140,29 @@ APIs & Services → Credentials, named *Browser key (auto created by Firebase)*)
 is a different thing from a **service account key** (Firebase console → Project
 settings → Service accounts); deleting the wrong one causes exactly this.
 
-Fix it by rebuilding with the project's current key:
+**Redeploying does not fix this on its own.** `firebase apps:sdkconfig` reports
+the key recorded against the Firebase *web app registration*, and that record
+keeps handing back the same key string long after the key itself has been
+deleted — so the build faithfully bakes in a key that no longer exists.
+
+Check which key you have and whether it is alive:
 
 ```bash
-./deploy.sh
+grep VITE_FIREBASE_API_KEY web/.env
+curl -s "https://identitytoolkit.googleapis.com/v1/recaptchaParams?key=$(grep '^VITE_FIREBASE_API_KEY=' web/.env | cut -d= -f2-)"
 ```
 
-`deploy.sh` reads the config out of the project with `firebase apps:sdkconfig`
-and rewrites `web/.env` every time, so it repairs this on its own. Building by
-hand does **not** — it uses whatever `web/.env` already says. If the key is
-genuinely gone, recreate it in the Google Cloud console under APIs & Services →
-Credentials → Create credentials → API key, then run `./deploy.sh`.
+`API_KEY_INVALID` in that output means the key is gone. Get a working one from
+<https://console.cloud.google.com/apis/credentials> — restore the deleted key if
+the console offers it (Google keeps them for 30 days), otherwise **Create
+credentials → API key** — then deploy with it explicitly:
+
+```bash
+./deploy.sh --api-key AIza…
+```
+
+`deploy.sh` now makes this same check before it builds, so it refuses to ship a
+site nobody can sign in to.
 
 **A worker cannot clock in at a site** — check the site is **active**, and that
 they are either unassigned (which means all sites) or assigned to that one.

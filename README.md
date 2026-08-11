@@ -24,10 +24,10 @@ npm --prefix web run build
 firebase deploy --only hosting,firestore --project clockit-bc990
 ```
 
-Re-run either any time; nothing they do is destructive. The difference is that
-`deploy.sh` re-reads your Firebase config from the project and rewrites
-`web/.env`, where building by hand trusts whatever is already there — so if
-sign-in ever fails with *API key not valid*, use `deploy.sh`.
+Re-run either any time; nothing they do is destructive. `deploy.sh` additionally
+re-reads your Firebase config from the project and checks the API key still
+works before building, so it cannot ship a site nobody can sign in to. See
+SETUP.md if it ever tells you the key is invalid.
 
 Once deployed, the app lives at **https://clockit-bc990.web.app**.
 

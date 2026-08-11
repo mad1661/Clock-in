@@ -9,6 +9,8 @@
 #   ./deploy.sh                 # deploy everything
 #   ./deploy.sh --project foo   # skip the project prompt
 #   ./deploy.sh --hosting-only  # just rebuild and push the website
+#   ./deploy.sh --api-key AIza… # use this browser API key instead of the one
+#                               # the project reports (see "API key" below)
 
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -24,12 +26,15 @@ die()   { printf '\n%s  ✗ %s%s\n\n' "$red$bold" "$1" "$reset" >&2; exit 1; }
 
 PROJECT=""
 HOSTING_ONLY=false
+API_KEY_OVERRIDE=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --project) PROJECT="${2:-}"; shift 2 ;;
     --project=*) PROJECT="${1#*=}"; shift ;;
+    --api-key) API_KEY_OVERRIDE="${2:-}"; shift 2 ;;
+    --api-key=*) API_KEY_OVERRIDE="${1#*=}"; shift ;;
     --hosting-only) HOSTING_ONLY=true; shift ;;
-    -h|--help) sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) die "Unknown option: $1" ;;
   esac
 done
@@ -143,7 +148,58 @@ process.stdout.write(
   ].join('\n'),
 );
 NODE
+
+if [ -n "$API_KEY_OVERRIDE" ]; then
+  # Deliberately after the generated file, so an explicitly supplied key always
+  # wins over whatever the project reports.
+  sed -i.bak "s|^VITE_FIREBASE_API_KEY=.*|VITE_FIREBASE_API_KEY=${API_KEY_OVERRIDE}|" web/.env
+  rm -f web/.env.bak
+  info "Using the API key given on the command line"
+fi
 ok "Wrote web/.env"
+
+# ---------------------------------------------------------------------------
+step "Checking the API key actually works"
+
+# `apps:sdkconfig` reports the key recorded against the Firebase web app, which
+# keeps returning a key string even after that key has been deleted in the
+# Google Cloud console. Deploying then produces a site that loads perfectly and
+# that nobody on earth can sign in to. One request catches it here instead.
+API_KEY="$(grep '^VITE_FIREBASE_API_KEY=' web/.env | cut -d= -f2-)"
+KEY_PROBE="$(curl -sS -m 20 \
+  "https://identitytoolkit.googleapis.com/v1/recaptchaParams?key=${API_KEY}" 2>/dev/null || true)"
+
+case "$KEY_PROBE" in
+  *API_KEY_INVALID*|*"API key not valid"*)
+    die "The Firebase API key for this project is not valid, so nobody would be
+  able to sign in to the site this script is about to build.
+
+  Key tried: ${API_KEY}
+
+  This almost always means the browser API key was deleted in the Google Cloud
+  console. Firebase keeps reporting the old key string, so redeploying cannot
+  fix it on its own.
+
+  Fix it like this:
+
+  1. Open the credentials page for the project:
+     https://console.cloud.google.com/apis/credentials?project=${PROJECT}
+  2. If a deleted key is offered for restore, restore it. Otherwise click
+     Create credentials → API key, and copy the new key.
+  3. Re-run with that key:
+     ./deploy.sh --api-key THE_NEW_KEY
+
+  Do not confuse this with a service account key (Firebase console → Project
+  settings → Service accounts). They are different objects on different pages,
+  and deleting the wrong one causes exactly this."
+    ;;
+  "")
+    warn "Could not reach Google to check the API key — carrying on."
+    ;;
+  *)
+    ok "API key accepted by Firebase Authentication"
+    ;;
+esac
 
 # ---------------------------------------------------------------------------
 step "Installing and building"
