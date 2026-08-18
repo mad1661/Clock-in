@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { collection, doc, getDoc, getDocs, query, where } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { useAuth } from '../../auth/AuthProvider';
-import { saveDailyTicket, signDailyTicket } from '../../lib/actions';
+import { clearDailyTicketSignature, saveDailyTicket, signDailyTicket } from '../../lib/actions';
 import { errorMessage } from '../../lib/errors';
 import { withTimestamps } from '../../lib/snapshot';
 import { dayBounds, dayKey, draftTicket, mergeTicket, ticketId } from '../../lib/ticket';
@@ -127,6 +127,7 @@ export default function DailyTicket() {
   const [rates, setRates] = useState<Map<string, number | null>>(new Map());
   const [signing, setSigning] = useState(false);
   const [drawn, setDrawn] = useState<SignatureStrokes | null>(null);
+  const [printing, setPrinting] = useState(false);
 
   useEffect(() => {
     void (async () => {
@@ -213,8 +214,47 @@ export default function DailyTicket() {
     }
   }
 
-  async function sign() {
-    if (!ticket || !drawn) return;
+  async function clearSignature() {
+    if (!ticket?.signature) return;
+    if (!window.confirm('Remove the signature from this ticket?')) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await clearDailyTicketSignature(ticket.id);
+      setTicket({ ...ticket, signature: null, supervisorName: null, signedAt: null });
+      setSigning(false);
+      setDrawn(null);
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /**
+   * Opens the print dialog, having first shown that something is happening.
+   *
+   * `window.print()` blocks while the browser lays the page out, and on a big
+   * ticket that is a second or two of a screen that looks frozen. React has to
+   * paint the busy state before the call, which takes two frames — one to
+   * commit, one to put it on the glass.
+   */
+  function printTicket() {
+    setPrinting(true);
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => {
+        try {
+          window.print();
+        } finally {
+          setPrinting(false);
+        }
+      }),
+    );
+  }
+
+  async function sign(useInstead?: SignatureStrokes | null) {
+    const mark = useInstead ?? drawn;
+    if (!ticket || !mark) return;
     setBusy(true);
     setError(null);
     try {
@@ -222,8 +262,8 @@ export default function DailyTicket() {
       // signature against a document that does not exist yet.
       const number = await saveDailyTicket(ticket);
       const name = profile?.displayName ?? profile?.email ?? 'Supervisor';
-      await signDailyTicket(ticket.id, name, drawn);
-      setTicket({ ...ticket, ticketNumber: number, supervisorName: name, signature: drawn });
+      await signDailyTicket(ticket.id, name, mark);
+      setTicket({ ...ticket, ticketNumber: number, supervisorName: name, signature: mark });
       setSigning(false);
       setDrawn(null);
       setSaved(true);
@@ -277,13 +317,23 @@ export default function DailyTicket() {
           >
             {ticket?.signature ? 'Re-sign' : 'Sign off'}
           </button>
+          {ticket?.signature && (
+            <button
+              type="button"
+              className="small danger"
+              onClick={() => void clearSignature()}
+              disabled={busy}
+            >
+              Clear signature
+            </button>
+          )}
           <button
             type="button"
             className="small primary"
-            onClick={() => window.print()}
-            disabled={!ticket}
+            onClick={printTicket}
+            disabled={!ticket || printing}
           >
-            Print / PDF
+            {printing ? 'Preparing…' : 'Print / PDF'}
           </button>
         </div>
 
@@ -458,6 +508,24 @@ export default function DailyTicket() {
             Signing as <strong>{profile?.displayName ?? profile?.email}</strong>. Your name and the
             time are recorded alongside the signature.
           </p>
+
+          {profile?.signature && (
+            <div className="saved-signature-offer">
+              <SignatureMark signature={profile.signature} />
+              <button
+                type="button"
+                className="primary block"
+                disabled={busy}
+                onClick={() => void sign(profile.signature)}
+              >
+                {busy ? 'Saving…' : 'Use my saved signature'}
+              </button>
+              <p className="hint" style={{ marginBottom: 0 }}>
+                Or sign below to use a different one this time.
+              </p>
+            </div>
+          )}
+
           <SignaturePad onChange={setDrawn} />
           <button
             type="button"
@@ -468,6 +536,17 @@ export default function DailyTicket() {
           >
             {busy ? 'Saving…' : 'Sign and save'}
           </button>
+          {ticket?.signature && (
+            <button
+              type="button"
+              className="danger block"
+              style={{ marginTop: '0.6rem' }}
+              disabled={busy}
+              onClick={() => void clearSignature()}
+            >
+              Remove the signature already on this ticket
+            </button>
+          )}
         </Modal>
       )}
 

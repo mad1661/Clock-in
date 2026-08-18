@@ -1112,3 +1112,20 @@ a.small.primary {
     print-color-adjust: exact;
   }
 }
+
+/* A stored signature, shown back to its owner. */
+.saved-signature,
+.saved-signature-offer {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 0.6rem 0.8rem;
+  margin-bottom: 0.75rem;
+}
+
+.saved-signature-offer .signature-mark,
+.saved-signature .signature-mark {
+  max-width: 220px;
+  height: 56px;
+  margin-bottom: 0.5rem;
+}

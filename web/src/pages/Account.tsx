@@ -6,8 +6,10 @@ import {
 } from 'firebase/auth';
 import { FirebaseError } from 'firebase/app';
 import { useAuth } from '../auth/AuthProvider';
-import { acknowledgePasswordChange } from '../lib/actions';
+import { acknowledgePasswordChange, saveMySignature } from '../lib/actions';
+import { errorMessage } from '../lib/errors';
 import { Banner, Card } from '../components/ui';
+import { SignatureMark, SignaturePad, type SignatureStrokes } from '../components/SignaturePad';
 
 const MIN_PASSWORD_LENGTH = 10;
 
@@ -80,6 +82,8 @@ export default function Account() {
         </div>
       </Card>
 
+      {profile?.role === 'admin' && <MySignature />}
+
       <Card title="Change password">
         {profile?.mustChangePassword && (
           <Banner kind="warning">
@@ -131,5 +135,100 @@ export default function Account() {
         </form>
       </Card>
     </>
+  );
+}
+
+
+/**
+ * The supervisor's own signature, stored once and reused.
+ *
+ * Redrawing the same mark on a phone for every ticket is how a signature
+ * feature stops getting used, so it is kept on their employee record and
+ * applied with one tap when they sign.
+ */
+function MySignature() {
+  const { profile } = useAuth();
+  const [drawing, setDrawing] = useState(false);
+  const [drawn, setDrawn] = useState<SignatureStrokes | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+
+  async function run(fn: () => Promise<void>) {
+    setBusy(true);
+    setError(null);
+    setSaved(false);
+    try {
+      await fn();
+      setSaved(true);
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Card title="My signature">
+      {error && <Banner kind="error">{error}</Banner>}
+      {saved && <Banner kind="success">Saved.</Banner>}
+
+      <p className="hint" style={{ marginTop: 0 }}>
+        Sign once here and every rental ticket you sign off uses it — no redrawing
+        on site.
+      </p>
+
+      {profile?.signature && !drawing && (
+        <div className="saved-signature">
+          <SignatureMark signature={profile.signature} />
+        </div>
+      )}
+
+      {drawing ? (
+        <>
+          <SignaturePad onChange={setDrawn} />
+          <div className="row-actions" style={{ marginTop: '0.75rem' }}>
+            <button
+              type="button"
+              className="small primary"
+              disabled={busy || !drawn}
+              onClick={() =>
+                void run(async () => {
+                  await saveMySignature(drawn);
+                  setDrawing(false);
+                  setDrawn(null);
+                })
+              }
+            >
+              {busy ? 'Saving…' : 'Save signature'}
+            </button>
+            <button type="button" className="small" onClick={() => setDrawing(false)}>
+              Cancel
+            </button>
+          </div>
+        </>
+      ) : (
+        <div className="row-actions">
+          <button type="button" className="small primary" onClick={() => setDrawing(true)}>
+            {profile?.signature ? 'Replace signature' : 'Add my signature'}
+          </button>
+          {profile?.signature && (
+            <button
+              type="button"
+              className="small danger"
+              disabled={busy}
+              onClick={() =>
+                void run(async () => {
+                  if (!window.confirm('Delete your saved signature?')) return;
+                  await saveMySignature(null);
+                })
+              }
+            >
+              Delete
+            </button>
+          )}
+        </div>
+      )}
+    </Card>
   );
 }

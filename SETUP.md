@@ -122,7 +122,10 @@ anything that has changed since.
 and sign with a finger or a stylus. Your name and the time are recorded with it,
 and it prints on the ticket. Editing the sheet afterwards clears the signature
 and asks you to sign again — it stands for the figures that were on it at the
-time.
+time. **Clear signature** takes it off entirely.
+
+Save yourself the redrawing: **Account → My signature**, sign once, and every
+ticket after that is one tap on *Use my saved signature*.
 
 To carry on from your paper ticket book, set the next number once — it is stored
 on the company record and each new ticket takes the next one.

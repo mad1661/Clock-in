@@ -196,6 +196,17 @@ and wedge the day's report.
 The supervisor's name and the time are recorded alongside it — a mark on its own
 identifies nobody a year later when the invoice is queried.
 
+A supervisor can **store their signature once** under Account and apply it to a
+ticket with one tap. Redrawing the same mark on a phone for every ticket is how
+a signature feature stops getting used. Stored on their own employee record,
+under a rule that lets them write that field and nothing else — a signature
+update cannot carry a promotion along with it — and bounded the same way the
+ticket's copy is.
+
+A signature can also be **taken off entirely**, not just replaced: somebody who
+signed the wrong day's sheet needs it gone. The name and time go with it, since
+leaving those behind would still read as signed on the printed copy.
+
 **Editing a signed ticket clears the signature.** A signature attests to the
 figures that were on the sheet when it was signed; keeping it through an edit
 would put a supervisor's name against numbers they never saw. Saving a signed

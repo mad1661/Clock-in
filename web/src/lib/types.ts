@@ -14,6 +14,11 @@ export interface UserDoc {
   mustChangePassword: boolean;
   /** Pay rate in dollars per hour. Internal — never printed on a customer's ticket. */
   hourlyRate?: number | null;
+  /**
+   * Their signature, kept so a supervisor signs tickets with one tap rather
+   * than redrawing it every day. Same stroke-path shape as on the ticket.
+   */
+  signature?: { paths: string[]; width: number; height: number } | null;
   createdAt?: Timestamp;
   updatedAt?: Timestamp;
 }

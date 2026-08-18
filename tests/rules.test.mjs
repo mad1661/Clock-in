@@ -261,6 +261,60 @@ test('a worker may only clear their own temporary-password flag', async () => {
   );
 });
 
+test('a supervisor can store their own signature', async () => {
+  await reset();
+  await establishedCompany();
+  const db = await asAdmin();
+  await assertSucceeds(
+    updateDoc(doc(db, 'users', 'boss'), {
+      signature: { paths: ['M 10 20 L 30 40'], width: 600, height: 200 },
+      updatedAt: serverTimestamp(),
+    }),
+  );
+});
+
+test('storing a signature cannot smuggle a promotion alongside it', async () => {
+  await reset();
+  await establishedCompany();
+  const db = await asUser('bob');
+  await assertFails(
+    updateDoc(doc(db, 'users', 'bob'), {
+      signature: { paths: ['M 0 0 L 1 1'], width: 600, height: 200 },
+      role: 'admin',
+      updatedAt: serverTimestamp(),
+    }),
+  );
+});
+
+test('nobody can put a signature on somebody else', async () => {
+  await reset();
+  await establishedCompany();
+  await seed((db) => setDoc(doc(db, 'users', 'carol'), { uid: 'carol', role: 'worker', active: true }));
+  const db = await asUser('bob');
+  await assertFails(
+    updateDoc(doc(db, 'users', 'carol'), {
+      signature: { paths: ['M 0 0 L 1 1'], width: 600, height: 200 },
+      updatedAt: serverTimestamp(),
+    }),
+  );
+});
+
+test('a stored signature is bounded like the ticket’s copy', async () => {
+  await reset();
+  await establishedCompany();
+  const db = await asAdmin();
+  await assertFails(
+    updateDoc(doc(db, 'users', 'boss'), {
+      signature: {
+        paths: Array.from({ length: 401 }, (_, i) => `M ${i} 0 L ${i} 9`),
+        width: 600,
+        height: 200,
+      },
+      updatedAt: serverTimestamp(),
+    }),
+  );
+});
+
 test('a worker cannot read or list other employees', async () => {
   await reset();
   await establishedCompany();

@@ -149,9 +149,15 @@ service cloud.firestore {
         && request.resource.data.createdAt == request.time
         && request.resource.data.role in ['worker', 'admin'];
 
-      // Admins edit anyone; the uid can never move.
+      // Admins edit anyone; the uid can never move, and the signature bound
+      // applies to them too — this rule matches an admin editing their own
+      // record, so leaving it off here would have made the cap below apply to
+      // everybody except the people who actually store signatures.
       allow update: if isAdmin()
         && request.resource.data.uid == resource.data.uid
+        && (request.resource.data.get('signature', null) == null
+            || (request.resource.data.signature.paths is list
+                && request.resource.data.signature.paths.size() <= 400))
         && request.resource.data.updatedAt == request.time;
 
       // A worker may clear one flag on themselves — that they have changed
@@ -161,6 +167,19 @@ service cloud.firestore {
         && request.resource.data.diff(resource.data)
              .affectedKeys().hasOnly(['mustChangePassword', 'updatedAt'])
         && request.resource.data.mustChangePassword == false
+        && request.resource.data.updatedAt == request.time;
+
+      // And may store their own signature, so signing a ticket is one tap
+      // rather than redrawing it daily. Its own rule rather than folded into
+      // the one above, which would have forced a signature change to also
+      // clear the temporary-password flag. Bounded like the ticket's copy.
+      allow update: if signedIn()
+        && request.auth.uid == uid
+        && request.resource.data.diff(resource.data)
+             .affectedKeys().hasOnly(['signature', 'updatedAt'])
+        && (request.resource.data.get('signature', null) == null
+            || (request.resource.data.signature.paths is list
+                && request.resource.data.signature.paths.size() <= 400))
         && request.resource.data.updatedAt == request.time;
 
       allow delete: if false;

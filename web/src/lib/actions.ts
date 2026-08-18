@@ -21,7 +21,7 @@ import { auth, db, useEmulators } from '../firebase';
 import type { LocationFix } from './geolocation';
 import { describeDevice } from './device';
 import { distanceMeters } from './policy';
-import type { DailyTicket, Equipment, JobSite, Role, Shift } from './types';
+import type { DailyTicket, Equipment, JobSite, Role, Shift, UserDoc } from './types';
 
 /**
  * Every write the app makes.
@@ -191,6 +191,19 @@ export async function setWorkerActive(uid: string, active: boolean) {
 export async function sendWorkerPasswordReset(email: string) {
   await sendPasswordResetEmail(auth, email);
   await audit('worker.password_reset', { email });
+}
+
+/**
+ * Stores the signed-in person's own signature.
+ *
+ * Kept on their user record rather than typed into each ticket: a supervisor
+ * signs several a day, and redrawing the same mark on a phone every time is how
+ * a feature stops being used.
+ */
+export async function saveMySignature(signature: UserDoc['signature']) {
+  const uid = auth.currentUser?.uid;
+  if (!uid) throw new Error('Sign in first.');
+  await updateDoc(doc(db, 'users', uid), { signature, updatedAt: nowServer() });
 }
 
 export async function acknowledgePasswordChange() {
@@ -709,6 +722,23 @@ export async function signDailyTicket(
     updatedAt: nowServer(),
   });
   await audit('ticket.sign', { targetId: ticketId, supervisorName });
+}
+
+/**
+ * Takes the signature back off a ticket.
+ *
+ * Separate from re-signing: a supervisor who signed the wrong day's sheet needs
+ * the mark gone, not replaced. The name and time go with it — leaving those
+ * behind would still read as signed on the printed copy.
+ */
+export async function clearDailyTicketSignature(ticketId: string) {
+  await updateDoc(doc(db, 'dailyTickets', ticketId), {
+    signature: null,
+    supervisorName: null,
+    signedAt: null,
+    updatedAt: nowServer(),
+  });
+  await audit('ticket.unsign', { targetId: ticketId });
 }
 
 /** Sets the number the next new ticket will take, to match the paper book. */

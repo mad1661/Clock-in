@@ -421,6 +421,59 @@ console.log('\n=== The daily rental ticket ===');
   await expectVisible(page, page.getByText(/needs signing again/i), 'the re-sign warning');
   check('editing a signed ticket clears the signature', (await page.locator('.signature-mark').count()) === 0);
 
+  // --- 10. Taking a signature back off ---
+  console.log('\n=== Clearing a signature ===');
+  page.on('dialog', (d) => void d.accept());
+
+  await page.getByRole('button', { name: /tap to sign|sign off/i }).first().click();
+  const pad2 = page.locator('.sig-pad');
+  await expectVisible(page, pad2, 'the signature pad');
+  const box2 = await pad2.boundingBox();
+  await page.mouse.move(box2.x + box2.width * 0.3, box2.y + box2.height * 0.5);
+  await page.mouse.down();
+  await page.mouse.move(box2.x + box2.width * 0.7, box2.y + box2.height * 0.4);
+  await page.mouse.up();
+  await page.getByRole('button', { name: /sign and save/i }).click();
+  await expectVisible(page, page.locator('.signature-mark'), 'the second signature');
+
+  await page.getByRole('button', { name: /clear signature/i }).click();
+  await page.waitForFunction(() => document.querySelectorAll('.signature-mark').length === 0, {
+    timeout: 15000,
+  });
+  check('a signature can be taken back off entirely', true);
+  check(
+    'clearing takes the name with it',
+    (await page.locator('.ticket-sign-name').count()) === 0,
+  );
+
+  // --- 11. A stored signature, applied with one tap ---
+  console.log('\n=== Supervisor stores their signature ===');
+  await page.goto(`${BASE}/account`, { waitUntil: 'domcontentloaded' });
+  const addSig = page.getByRole('button', { name: /add my signature|replace signature/i });
+  await expectVisible(page, addSig, 'the signature card on Account');
+  await addSig.click();
+
+  const pad3 = page.locator('.sig-pad');
+  await expectVisible(page, pad3, 'the signature pad on Account');
+  const box3 = await pad3.boundingBox();
+  await page.mouse.move(box3.x + box3.width * 0.25, box3.y + box3.height * 0.5);
+  await page.mouse.down();
+  await page.mouse.move(box3.x + box3.width * 0.75, box3.y + box3.height * 0.45);
+  await page.mouse.up();
+  await page.getByRole('button', { name: /save signature/i }).click();
+  await expectVisible(page, page.locator('.saved-signature .signature-mark'), 'the stored signature');
+  check('a supervisor can store their signature', true);
+
+  // …and it is offered on the ticket instead of drawing again.
+  await page.goto(`${BASE}/admin/ticket`, { waitUntil: 'domcontentloaded' });
+  await expectVisible(page, page.locator('.ticket-table'), 'the ticket');
+  await page.getByRole('button', { name: /tap to sign|sign off/i }).first().click();
+  const useSaved = page.getByRole('button', { name: /use my saved signature/i });
+  await expectVisible(page, useSaved, 'the saved-signature shortcut');
+  await useSaved.click();
+  await expectVisible(page, page.locator('.ticket-sign .signature-mark'), 'the applied signature');
+  check('the stored signature signs a ticket in one tap', true);
+
   await ctx.close();
 }
 
