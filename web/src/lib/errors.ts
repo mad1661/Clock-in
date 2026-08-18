@@ -38,6 +38,16 @@ export function errorMessage(err: unknown): string {
         return 'Too many attempts. Wait a few minutes and try again.';
       case 'not-found':
         return 'That record no longer exists. Refresh and try again.';
+      case 'failed-precondition':
+        // Firestore's own message for this is three lines of console URL. It
+        // happens on the first run after a deploy that adds a report, and it
+        // clears itself, so say that rather than making it look like a fault.
+        return (
+          'The database is still building an index for this report. It usually ' +
+          'takes a few minutes after an update — wait, then try again.'
+        );
+      case 'aborted':
+        return 'Someone else saved at the same moment. Try again.';
       default:
         return err.message;
     }
