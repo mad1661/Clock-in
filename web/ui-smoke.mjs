@@ -269,6 +269,53 @@ let workerPassword;
     'ownership is not offered to a plain worker',
     (await page.getByRole('button', { name: /make owner/i }).count()) === 0,
   );
+  // One owner is the last owner, so there is nothing to give up yet.
+  check(
+    'the only owner cannot give ownership away to nobody',
+    (await page.getByRole('button', { name: /give up ownership/i }).count()) === 0,
+  );
+
+  // A second supervisor, who can then be made a second owner. Ownership is a
+  // set of equals here, not a chain of succession — this is the whole point.
+  await page.getByRole('button', { name: /add employee/i }).click();
+  await page.fill('#w-name', 'Dana Reid');
+  await page.fill('#w-email', 'dana@example.com');
+  await page.selectOption('#w-role', 'admin');
+  await page.getByRole('button', { name: /create account/i }).click();
+  await expectVisible(page, page.locator('.credential .mono'), 'Dana’s password');
+  await page.getByRole('button', { name: /^done$/i }).click();
+
+  page.on('dialog', (d) => void d.accept());
+  const danaRow = page.locator('.row').filter({ hasText: 'Dana Reid' });
+  await expectVisible(page, danaRow, 'Dana on the roster');
+  await danaRow.getByRole('button', { name: /make owner/i }).click();
+  await expectVisible(
+    page,
+    danaRow.getByRole('button', { name: /remove as owner/i }),
+    'Dana holding ownership',
+  );
+  check(
+    'a second person can be made an owner',
+    (await danaRow.locator('.pill', { hasText: /^Owner$/ }).count()) === 1,
+    (await danaRow.innerText()).replace(/\n/g, ' | '),
+  );
+
+  // With two owners, either can now step back — including the person who
+  // claimed the company.
+  await expectVisible(
+    page,
+    page.getByRole('button', { name: /give up ownership/i }),
+    'the give-up-ownership button',
+  );
+  check('an owner can step back once somebody else holds it too', true);
+
+  await openAdmin(page, /^activity$/i, '/admin/activity');
+  const ownerLog = await page.locator('.list').innerText();
+  check(
+    'making somebody an owner is logged',
+    /Owner added/i.test(ownerLog),
+    ownerLog.replace(/\n/g, ' | ').slice(0, 200),
+  );
 
   await ctx.close();
 }
@@ -528,6 +575,48 @@ console.log('\n=== The daily rental ticket ===');
   await expectVisible(page, page.locator('.ticket-sign .signature-mark'), 'the applied signature');
   check('the stored signature signs a ticket in one tap', true);
 
+  await ctx.close();
+}
+
+// --- 12. Site hours warn, and never refuse ----------------------------------
+console.log('\n=== Site hours ===');
+{
+  // A window starting two hours from now, so "now" is always outside it —
+  // whatever time this test happens to run.
+  const hhmm = (offsetHours) => {
+    const t = new Date(Date.now() + offsetHours * 3600 * 1000);
+    return `${String(t.getHours()).padStart(2, '0')}:${String(t.getMinutes()).padStart(2, '0')}`;
+  };
+
+  const { ctx, page } = await newPage({ geo: SITE });
+  await signIn(page, ADMIN.email, ADMIN.password);
+  await openAdmin(page, /^job sites$/i, '/admin/sites');
+  await page.getByRole('button', { name: /^edit$/i }).first().click();
+  await expectVisible(page, page.locator('#s-start'), 'the site hours fields');
+  await page.fill('#s-start', hhmm(2));
+  await page.fill('#s-end', hhmm(3));
+  await page.getByRole('dialog').getByRole('button', { name: /save changes/i }).click();
+  await expectVisible(page, page.getByText(/Hours \d/), 'the hours on the site row');
+  check('a job site can be given the hours it runs', true);
+  await ctx.close();
+}
+
+{
+  const { ctx, page } = await newPage({ geo: SITE });
+  await signIn(page, 'pat@example.com', workerPassword);
+  await selectSite(page, 'Harbour Works');
+  await expectVisible(
+    page,
+    page.getByText(/outside Harbour Works's hours/i),
+    'the outside-hours warning',
+  );
+  check('a worker is told when they are outside the site’s hours', true);
+
+  // And is not stopped. Recording the hour is the legal obligation; refusing
+  // the punch would only lose the record, not the work.
+  const clockIn = page.getByRole('button', { name: /clock in/i });
+  check('they are warned, not blocked', await clockIn.isEnabled());
+  await shot(page, 'ui-12-outside-hours.png', true);
   await ctx.close();
 }
 

@@ -56,15 +56,23 @@ service cloud.firestore {
       return isActive() && me().role == 'admin';
     }
 
-    // The owner is recorded on the company document, set when the company was
-    // claimed. One level above a supervisor: supervisors run the yard, the
-    // owner decides who the supervisors are.
-    function ownerUid() {
-      return get(/databases/$(database)/documents/config/company).data.ownerUid;
+    // Owners are recorded on the company document, the first of them set when
+    // the company was claimed. One level above a supervisor: supervisors run
+    // the yard, owners decide who the supervisors are. There can be several,
+    // and they are equals.
+    function ownersOf(company) {
+      // A company claimed before ownership could be shared carries a single
+      // `ownerUid`. Reading either shape means those keep working untouched,
+      // right up until somebody adds a second owner.
+      return company.get('ownerUids', [company.get('ownerUid', '')]);
+    }
+
+    function owners() {
+      return ownersOf(get(/databases/$(database)/documents/config/company).data);
     }
 
     function isOwner() {
-      return isActive() && request.auth.uid == ownerUid();
+      return isActive() && request.auth.uid in owners();
     }
 
     // --- Geometry -----------------------------------------------------------
@@ -127,23 +135,41 @@ service cloud.firestore {
     // expressed with no server to enforce it.
 
     match /config/company {
+      function current() { return ownersOf(resource.data); }
+      function proposed() { return ownersOf(request.resource.data); }
+      function added() { return proposed().removeAll(current()); }
+      function removed() { return current().removeAll(proposed()); }
+
+      // Somebody made an owner has to already be trusted with the yard —
+      // a worker made owner could not reach any of what it grants.
+      function isActiveAdmin(uid) {
+        return get(/databases/$(database)/documents/users/$(uid)).data.role == 'admin'
+          && get(/databases/$(database)/documents/users/$(uid)).data.active == true;
+      }
+
       allow read: if signedIn();
       allow create: if signedIn()
-        && request.resource.data.ownerUid == request.auth.uid
+        && request.resource.data.ownerUids == [request.auth.uid]
         && request.resource.data.createdAt == request.time
         && getAfter(/databases/$(database)/documents/users/$(request.auth.uid))
              .data.role == 'admin';
-      // Only the owner hands ownership on, and only to somebody who is already
-      // an active supervisor — otherwise a mistyped id would leave the company
-      // owned by nobody. Everything else on this document any supervisor may
-      // change.
+
+      // Only an owner changes who the owners are, one person per write, and
+      // never down to nobody: a company no one can own is not a state worth
+      // being able to reach. Owners are equals, so any of them can add or
+      // remove any other — including the person who claimed the company. That
+      // is the trade for not needing a server to arbitrate, and every change
+      // lands in the activity log with a name against it.
+      //
+      // Everything else on this document any supervisor may change.
       allow update: if isAdmin()
-        && (request.resource.data.ownerUid == resource.data.ownerUid
-            || (isOwner()
-                && get(/databases/$(database)/documents/users/$(request.resource.data.ownerUid))
-                     .data.role == 'admin'
-                && get(/databases/$(database)/documents/users/$(request.resource.data.ownerUid))
-                     .data.active == true));
+        && (proposed() == current()
+            || (request.auth.uid in current()
+                && proposed().size() >= 1
+                && proposed().size() <= 20
+                && proposed().toSet().size() == proposed().size()
+                && added().size() + removed().size() == 1
+                && (added().size() == 0 || isActiveAdmin(added()[0]))));
       allow delete: if false;
     }
 
@@ -175,13 +201,13 @@ service cloud.firestore {
       // record, so leaving it off here would have made the cap below apply to
       // everybody except the people who actually store signatures.
       //
-      // The owner's own record cannot be demoted or switched off by anybody,
-      // themselves included. Ownership moves by handing it on, not by removing
-      // the person holding it, and a company with no reachable owner is not a
-      // state worth being able to reach.
+      // An owner's own record cannot be demoted or switched off by anybody,
+      // themselves included. Ownership is given up on the company document, not
+      // by deleting the person holding it — so somebody leaving is removed as an
+      // owner first, and only then deactivated.
       allow update: if isAdmin()
         && request.resource.data.uid == resource.data.uid
-        && (uid != ownerUid()
+        && (!(uid in owners())
             || (request.resource.data.role == 'admin'
                 && request.resource.data.active == true))
         && (request.resource.data.get('signature', null) == null
@@ -316,9 +342,16 @@ service cloud.firestore {
         && request.resource.data.lastPunchAt == request.time
         && request.time > resource.data.lastPunchAt + duration.value(30, 's');
 
-      // An admin clearing a stuck shift — the manual stand-in for the nightly
-      // sweep that a scheduled function used to do.
-      allow update: if isAdmin() && request.resource.data.openShiftId == null;
+      // An owner clearing a stuck shift — the manual stand-in for the nightly
+      // sweep a scheduled function used to do. Only ever in the same write that
+      // actually closes the shift, so nobody can be quietly taken off the clock
+      // while their shift record stays open forever. The 24-hour condition and
+      // the owner-only part of it are enforced over in /shifts.
+      allow update: if isOwner()
+        && request.resource.data.openShiftId == null
+        && (resource.data.openShiftId == null
+            || getAfter(/databases/$(database)/documents/shifts/$(resource.data.openShiftId))
+                 .data.status == 'closed');
 
       allow delete: if false;
     }
@@ -393,11 +426,22 @@ service cloud.firestore {
 
       // A supervisor ruling on a shift or correcting its times. The captured
       // evidence — where they were, on what, how far out — is never editable.
+      //
+      // Ending somebody else's shift for them is not part of that. A shift goes
+      // from open to closed when the worker punches out; the one exception is an
+      // owner closing one that has been running more than 24 hours, which is a
+      // forgotten clock-out rather than a long day. Anything shorter is somebody
+      // who is still at work, and taking them off the clock from an office would
+      // cost them hours they are owed.
       allow update: if isAdmin()
         && request.resource.data.userId == resource.data.userId
         && request.resource.data.clockIn.location == resource.data.clockIn.location
         && request.resource.data.clockIn.device == resource.data.clockIn.device
         && request.resource.data.clockIn.distanceMeters == resource.data.clockIn.distanceMeters
+        && (resource.data.status != 'open'
+            || request.resource.data.status == 'open'
+            || (isOwner()
+                && request.time > resource.data.clockInAt + duration.value(24, 'h')))
         && request.resource.data.updatedAt == request.time;
 
       allow delete: if false;

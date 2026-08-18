@@ -3,10 +3,11 @@ import { collection, onSnapshot, orderBy, query, where } from 'firebase/firestor
 import { db } from '../../firebase';
 import { useAuth } from '../../auth/AuthProvider';
 import {
+  addOwner,
   createWorker,
+  removeOwner,
   sendWorkerPasswordReset,
   setWorkerActive,
-  transferOwnership,
   updateWorker,
 } from '../../lib/actions';
 import { errorMessage } from '../../lib/errors';
@@ -29,7 +30,7 @@ interface IssuedCredential {
 }
 
 export default function Workers() {
-  const { profile, ownerUid, isOwner } = useAuth();
+  const { profile, ownerUids, isOwner } = useAuth();
   const [workers, setWorkers] = useState<UserDoc[] | null>(null);
   const [sites, setSites] = useState<JobSite[]>([]);
   const [machines, setMachines] = useState<Equipment[]>([]);
@@ -162,8 +163,10 @@ export default function Workers() {
               <li key={worker.uid} className="row">
                 <div className="row-head">
                   <span className="title">{worker.displayName}</span>
-                  {worker.uid === ownerUid && <span className="pill pill-success">Owner</span>}
-                  {worker.role === 'admin' && worker.uid !== ownerUid && (
+                  {ownerUids.includes(worker.uid) && (
+                    <span className="pill pill-success">Owner</span>
+                  )}
+                  {worker.role === 'admin' && !ownerUids.includes(worker.uid) && (
                     <span className="pill pill-success">Supervisor</span>
                   )}
                   {!worker.active && <span className="pill pill-error">Deactivated</span>}
@@ -211,33 +214,63 @@ export default function Workers() {
                   >
                     Send reset link
                   </button>
-                  {/* Only the owner hands ownership on, and only to a
-                      supervisor: a worker made owner could not use any of it. */}
-                  {isOwner && worker.uid !== ownerUid && worker.role === 'admin' && worker.active && (
+                  {/* Only an owner decides who else owns the company, and
+                      only a supervisor can be made one: a worker made owner
+                      could not reach any of what it grants. */}
+                  {isOwner &&
+                    !ownerUids.includes(worker.uid) &&
+                    worker.role === 'admin' &&
+                    worker.active && (
+                      <button
+                        type="button"
+                        className="small"
+                        onClick={() =>
+                          void run(async () => {
+                            if (
+                              !window.confirm(
+                                `Make ${worker.displayName} an owner?\n\nOwners are equals. ` +
+                                  `${worker.displayName} will be able to add and remove owners — ` +
+                                  `including you.`,
+                              )
+                            )
+                              return;
+                            await addOwner(worker.uid, worker.displayName);
+                          })
+                        }
+                      >
+                        Make owner
+                      </button>
+                    )}
+                  {/* The last owner stays: a company nobody owns is one nobody
+                      can ever put right. */}
+                  {isOwner && ownerUids.includes(worker.uid) && ownerUids.length > 1 && (
                     <button
                       type="button"
                       className="small"
                       onClick={() =>
                         void run(async () => {
+                          const self = worker.uid === profile?.uid;
                           if (
                             !window.confirm(
-                              `Make ${worker.displayName} the owner?\n\nYou will stay a supervisor, ` +
-                                `but they take over as owner and you cannot undo this yourself — ` +
-                                `only they can hand it back.`,
+                              self
+                                ? `Give up ownership?\n\nYou will stay a supervisor, but you will ` +
+                                    `no longer be able to decide who owns the company, and only ` +
+                                    `another owner can give it back.`
+                                : `Remove ${worker.displayName} as an owner?\n\nThey stay a ` +
+                                    `supervisor and keep everything a supervisor can do.`,
                             )
                           )
                             return;
-                          await transferOwnership(worker.uid, worker.displayName);
+                          await removeOwner(worker.uid, worker.displayName);
                         })
                       }
                     >
-                      Make owner
+                      {worker.uid === profile?.uid ? 'Give up ownership' : 'Remove as owner'}
                     </button>
                   )}
-                  {/* The owner cannot be switched off, by anyone, themselves
-                      included — a company with no reachable owner is not a
-                      state worth being able to reach. */}
-                  {worker.uid !== profile?.uid && worker.uid !== ownerUid && (
+                  {/* An owner cannot be switched off, by anyone, themselves
+                      included — take ownership off them first. */}
+                  {worker.uid !== profile?.uid && !ownerUids.includes(worker.uid) && (
                     <button
                       type="button"
                       className={`small ${worker.active ? 'danger' : ''}`}

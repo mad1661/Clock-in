@@ -247,16 +247,63 @@ rules themselves — hours cannot be edited by the worker they belong to, shifts
 cannot be deleted by anyone — so the log records who did what, while the rules
 decide what anybody is allowed to do at all.
 
-### Owner and supervisors
+### Owners and supervisors
 
-The company has one **owner**, recorded when it was first claimed. Supervisors
-run the yard; the owner decides who the supervisors are.
+A company has one or more **owners**, the first recorded when it was claimed.
+Supervisors run the yard; owners decide who the supervisors are.
 
-Only the owner can hand ownership on, and only to somebody who is already an
-active supervisor — otherwise a mistyped id would leave the company owned by
-nobody. And the owner's account cannot be deactivated or demoted by anyone,
-themselves included: ownership moves by being handed on, not by removing the
-person holding it. There are tests for each of those.
+Only an owner can change who the owners are, one person at a time, and only in
+favour of somebody who is already an active supervisor — otherwise a mistyped id
+would leave the company owned by nobody. The list can never be emptied, and an
+owner's account cannot be deactivated or demoted by anyone, themselves included.
+Somebody leaving is taken off the owner list first and deactivated second.
+
+Owners are equals, not a chain of succession: any of them can add or remove any
+other, including the person who claimed the company. That is the trade for
+having no server to arbitrate a dispute, and it is why every ownership change
+lands in the activity log with a name against it. There are tests for each of
+these.
+
+### Forgotten clock-outs
+
+Somebody who never taps Clock out stays on the clock. With no Cloud Functions
+there is no nightly sweep, so **an owner ends the shift by hand** from the On
+site tab — and only once it has been running more than 24 hours, which the
+rules enforce rather than the screen. A shift shorter than that belongs to
+somebody who is probably still working, and ending it from an office would cost
+them hours they are owed.
+
+Ending one asks for the time the worker actually stopped. That question is not
+decoration: hours worked have to be recorded and paid whether or not anybody
+remembered to press a button, so closing a shift at a guessed-low time is not a
+neutral act. Leaving it blank is allowed, records no hours at all, and leaves
+the shift in the review queue — unpaid and visible — until the real ones are
+entered. Either way the shift is flagged and the change is logged.
+
+The clock-state document and the shift are closed in the same write, so nobody
+can be quietly taken off the clock while their shift record stays open forever.
+
+### Site hours
+
+A job site can carry the hours it runs — 7:00 AM to 5:30 PM. A punch outside
+them is **recorded, paid and flagged**. It is never refused, and nobody is ever
+clocked out automatically.
+
+That is a legal position, not an unfinished feature. Under the FLSA and the
+California Labor Code an employer has to pay for all hours it suffers or permits
+to be worked, scheduled or not. Refusing a clock-in does not stop somebody
+working — it stops the work being *recorded*, which is how an off-the-clock wage
+claim starts. Punching somebody out automatically at a set time is the same
+problem wearing a different hat, and close kin to the automatic meal deduction
+California courts have thrown out repeatedly. Unauthorised hours are a
+management matter: the app flags them and names them, and a supervisor deals
+with the person.
+
+The flags are advisory, and honestly so. The rules see UTC and no timezone, so
+"was this 7am local" is not a question they can answer the same way twice a
+year — these two flags are the only ones the client could omit. They can never
+launder a punch, only mark one: geofence, freshness and accuracy are still
+recomputed and enforced server-side.
 
 ### Knowing what they clocked in on
 
@@ -279,8 +326,8 @@ Stated plainly, because the alternative is discovering it later:
 
 - **No photo fallback.** It needs Cloud Storage, which needs Blaze.
 - **No automatic close of forgotten shifts.** That was a scheduled function. An
-  administrator closes a stuck shift by hand from the **On site** tab; it is
-  flagged so it stands out on the timesheet.
+  owner closes a stuck shift by hand from the **On site** tab, once it has run
+  past 24 hours; it is flagged so it stands out on the timesheet.
 - **Deactivating cannot disable the Auth account.** That needs the Admin SDK. A
   deactivated worker can still sign in, but every rule denies them, so they can
   read nothing and write nothing — they see an "account deactivated" screen.
@@ -301,7 +348,7 @@ firestore.rules      the entire enforcement layer — read this first
 firestore.indexes.json
 firebase.json        hosting config; deploy targets are hosting + firestore
 deploy.sh            guided deploy
-tests/rules.test.mjs 47 tests against the rules, on the real emulator
+tests/rules.test.mjs 81 tests against the rules, on the real emulator
 web/
   src/lib/actions.ts every write the app makes
   src/lib/policy.ts  thresholds, mirrored by firestore.rules
@@ -322,5 +369,6 @@ npm run test:overtime # California overtime maths
 `npm test` is the one that matters. With no server, the rules are the only thing
 standing between a worker and everyone else's timesheet, so they are tested
 against the real emulator rather than reasoned about: bootstrap, roles, the
-geofence, one-open-shift, the rate limit, edits, approval, the audit log, and
+geofence, one-open-shift, the rate limit, edits, approval, ownership, forgotten
+clock-outs, the audit log, and
 what a signed-out visitor can reach (nothing).

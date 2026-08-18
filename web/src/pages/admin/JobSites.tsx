@@ -7,6 +7,7 @@ import { errorMessage } from '../../lib/errors';
 import { equipmentLabel } from '../../lib/types';
 import { acquireLocation } from '../../lib/geolocation';
 import { fmtDistance } from '../../lib/format';
+import { describeHours } from '../../lib/policy';
 import { dayKey } from '../../lib/ticket';
 import { Banner, Card, EmptyState, Modal, Spinner } from '../../components/ui';
 import { geocode, type GeocodeHit } from '../../lib/basemap';
@@ -84,6 +85,7 @@ export default function JobSites() {
                   <span>{site.address || 'No address'}</span>
                   <span>Boundary {fmtDistance(site.radiusMeters)}</span>
                   {site.customer && <span>Customer {site.customer}</span>}
+                  {describeHours(site) && <span>Hours {describeHours(site)}</span>}
                   <span className="mono">
                     {site.lat.toFixed(5)}, {site.lng.toFixed(5)}
                   </span>
@@ -154,6 +156,8 @@ function SiteForm({
   const [address, setAddress] = useState(site?.address ?? '');
   const [customer, setCustomer] = useState(site?.customer ?? '');
   const [jobNumber, setJobNumber] = useState(site?.jobNumber ?? '');
+  const [shiftStart, setShiftStart] = useState(site?.shiftStart ?? '');
+  const [shiftEnd, setShiftEnd] = useState(site?.shiftEnd ?? '');
   const [equipmentIds, setEquipmentIds] = useState<string[]>(site?.equipmentIds ?? []);
   const [lat, setLat] = useState(site ? String(site.lat) : '');
   const [lng, setLng] = useState(site ? String(site.lng) : '');
@@ -237,6 +241,8 @@ function SiteForm({
         customer,
         jobNumber,
         equipmentIds,
+        shiftStart,
+        shiftEnd,
       });
       onSaved();
     } catch (err) {
@@ -281,6 +287,44 @@ function SiteForm({
             onChange={(e) => setJobNumber(e.target.value)}
             autoComplete="off"
           />
+        </div>
+
+        <div className="field">
+          <label htmlFor="s-start">Hours (optional)</label>
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+            <input
+              id="s-start"
+              type="time"
+              value={shiftStart ?? ''}
+              onChange={(e) => setShiftStart(e.target.value)}
+              aria-label="Site start time"
+            />
+            <span>to</span>
+            <input
+              id="s-end"
+              type="time"
+              value={shiftEnd ?? ''}
+              onChange={(e) => setShiftEnd(e.target.value)}
+              aria-label="Site finish time"
+            />
+            {(shiftStart || shiftEnd) && (
+              <button
+                type="button"
+                className="small ghost"
+                onClick={() => {
+                  setShiftStart('');
+                  setShiftEnd('');
+                }}
+              >
+                Clear
+              </button>
+            )}
+          </div>
+          <p className="hint">
+            When this site runs. A punch outside these hours is still recorded and paid — it is
+            flagged for you to look at, not refused. Blocking a clock-in would not stop the work,
+            only the record of it, which is the wrong end of a wage claim to be on.
+          </p>
         </div>
 
         <div className="field">

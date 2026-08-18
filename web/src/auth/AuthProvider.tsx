@@ -21,9 +21,9 @@ interface AuthState {
   profileError: Error | null;
   loading: boolean;
   isAdmin: boolean;
-  /** The uid recorded on the company as its owner, once known. */
-  ownerUid: string | null;
-  /** True for the one person who can hand ownership on. */
+  /** The uids recorded on the company as its owners, once known. */
+  ownerUids: string[];
+  /** True for anyone who can decide who else owns the company. */
   isOwner: boolean;
   signOut: () => Promise<void>;
 }
@@ -34,7 +34,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserDoc | null>(null);
   const [profileError, setProfileError] = useState<Error | null>(null);
-  const [ownerUid, setOwnerUid] = useState<string | null>(null);
+  const [ownerUids, setOwnerUids] = useState<string[]>([]);
   const [authResolved, setAuthResolved] = useState(false);
   const [profileResolved, setProfileResolved] = useState(false);
 
@@ -108,17 +108,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, [user]);
 
-  // Who owns the company. Live, so handing ownership on takes effect in the
-  // other person's open tab rather than at their next reload.
+  // Who owns the company. Live, so making somebody an owner — or taking it
+  // back off them — takes effect in their open tab rather than at their next
+  // reload. A company claimed before ownership could be shared still carries a
+  // single `ownerUid`; read either shape, exactly as firestore.rules does.
   useEffect(() => {
     if (!user) {
-      setOwnerUid(null);
+      setOwnerUids([]);
       return;
     }
     return onSnapshot(
       doc(db, 'config', 'company'),
-      (snap) => setOwnerUid((snap.data()?.ownerUid as string) ?? null),
-      () => setOwnerUid(null),
+      (snap) => {
+        const data = snap.data();
+        const list = Array.isArray(data?.ownerUids)
+          ? (data.ownerUids as string[])
+          : data?.ownerUid
+            ? [data.ownerUid as string]
+            : [];
+        setOwnerUids(list);
+      },
+      () => setOwnerUids([]),
     );
   }, [user]);
 
@@ -134,13 +144,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       profileError,
       loading: !authResolved || (Boolean(user) && !profileResolved),
       isAdmin: profile?.role === 'admin' && profile.active,
-      ownerUid,
-      isOwner: Boolean(user && ownerUid && user.uid === ownerUid && profile?.active),
+      ownerUids,
+      isOwner: Boolean(user && profile?.active && ownerUids.includes(user.uid)),
       signOut: async () => {
         await fbSignOut(auth);
       },
     }),
-    [user, profile, profileError, authResolved, profileResolved, ownerUid],
+    [user, profile, profileError, authResolved, profileResolved, ownerUids],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -21,6 +21,7 @@ import {
 } from '@firebase/rules-unit-testing';
 import {
   collection,
+  deleteField,
   doc,
   getDoc,
   getDocs,
@@ -154,6 +155,20 @@ async function establishedCompany() {
   });
 }
 
+/** The company owned by two people, plus a third supervisor who owns nothing. */
+async function sharedOwnership() {
+  await seed(async (db) => {
+    await setDoc(doc(db, 'config', 'company'), {
+      ownerUids: ['boss', 'deputy'],
+      name: 'Coburn Equipment Rentals',
+      createdAt: serverTimestamp(),
+    });
+    await setDoc(doc(db, 'jobSites', SITE.id), { ...SITE, updatedAt: serverTimestamp() });
+    await setDoc(doc(db, 'users', 'deputy'), { uid: 'deputy', role: 'admin', active: true });
+    await setDoc(doc(db, 'users', 'third'), { uid: 'third', role: 'admin', active: true });
+  });
+}
+
 /**
  * Clock in the way the app does: shift + clock-state in one batch. Returns the
  * promise so a test can assert it succeeds or fails.
@@ -186,7 +201,7 @@ test('the first person to arrive can claim the company and become admin', async 
     updatedAt: serverTimestamp(),
   });
   batch.set(doc(db, 'config', 'company'), {
-    ownerUid: 'first',
+    ownerUids: ['first'],
     name: 'Coburn Equipment Rentals',
     createdAt: serverTimestamp(),
   });
@@ -229,7 +244,7 @@ test('the bootstrap works exactly once — the second person cannot claim it', a
     updatedAt: serverTimestamp(),
   });
   batch.set(doc(db, 'config', 'company'), {
-    ownerUid: 'second',
+    ownerUids: ['second'],
     name: 'Hostile Takeover',
     createdAt: serverTimestamp(),
   });
@@ -356,41 +371,176 @@ test('a deactivated admin has no admin powers left', async () => {
 
 // --- Ownership ---------------------------------------------------------------
 
-test('the owner can hand ownership to another supervisor', async () => {
+test('an owner can make another supervisor an owner too', async () => {
   await reset();
   await establishedCompany();
   await seed((db) =>
     setDoc(doc(db, 'users', 'deputy'), { uid: 'deputy', role: 'admin', active: true }),
   );
   const db = await asAdmin();
-  await assertSucceeds(updateDoc(doc(db, 'config', 'company'), { ownerUid: 'deputy' }));
+  await assertSucceeds(
+    updateDoc(doc(db, 'config', 'company'), { ownerUids: ['boss', 'deputy'] }),
+  );
 });
 
-test('a supervisor who is not the owner cannot take ownership', async () => {
+test('a company claimed before ownership could be shared still reads as owned', async () => {
+  await reset();
+  // `establishedCompany` writes the old single-owner shape on purpose: this is
+  // the migration path, and it has to keep working with nobody touching it.
+  await establishedCompany();
+  await seed((db) =>
+    setDoc(doc(db, 'users', 'deputy'), { uid: 'deputy', role: 'admin', active: true }),
+  );
+  const db = await asAdmin();
+  await assertSucceeds(
+    updateDoc(doc(db, 'config', 'company'), {
+      ownerUids: ['boss', 'deputy'],
+      ownerUid: deleteField(),
+    }),
+  );
+});
+
+test('a supervisor who is not an owner cannot make themselves one', async () => {
   await reset();
   await establishedCompany();
   const db = await asUser('deputy', { role: 'admin' });
-  await assertFails(updateDoc(doc(db, 'config', 'company'), { ownerUid: 'deputy' }));
+  await assertFails(updateDoc(doc(db, 'config', 'company'), { ownerUids: ['boss', 'deputy'] }));
 });
 
-test('ownership cannot be handed to somebody who is not a supervisor', async () => {
+test('ownership cannot be given to somebody who is not a supervisor', async () => {
   await reset();
   await establishedCompany();
   await seed((db) =>
     setDoc(doc(db, 'users', 'bob'), { uid: 'bob', role: 'worker', active: true }),
   );
   const db = await asAdmin();
-  await assertFails(updateDoc(doc(db, 'config', 'company'), { ownerUid: 'bob' }));
+  await assertFails(updateDoc(doc(db, 'config', 'company'), { ownerUids: ['boss', 'bob'] }));
 });
 
-test('ownership cannot be handed to a deactivated supervisor', async () => {
+test('ownership cannot be given to a deactivated supervisor', async () => {
   await reset();
   await establishedCompany();
   await seed((db) =>
     setDoc(doc(db, 'users', 'gone'), { uid: 'gone', role: 'admin', active: false }),
   );
   const db = await asAdmin();
-  await assertFails(updateDoc(doc(db, 'config', 'company'), { ownerUid: 'gone' }));
+  await assertFails(updateDoc(doc(db, 'config', 'company'), { ownerUids: ['boss', 'gone'] }));
+});
+
+test('owners are added one at a time, never a list at once', async () => {
+  await reset();
+  await establishedCompany();
+  await seed(async (db) => {
+    await setDoc(doc(db, 'users', 'deputy'), { uid: 'deputy', role: 'admin', active: true });
+    await setDoc(doc(db, 'users', 'other'), { uid: 'other', role: 'admin', active: true });
+  });
+  const db = await asAdmin();
+  await assertFails(
+    updateDoc(doc(db, 'config', 'company'), { ownerUids: ['boss', 'deputy', 'other'] }),
+  );
+});
+
+test('an owner can be removed while another remains', async () => {
+  await reset();
+  await sharedOwnership();
+  const db = await asAdmin();
+  await assertSucceeds(updateDoc(doc(db, 'config', 'company'), { ownerUids: ['deputy'] }));
+});
+
+test('an owner can give up ownership themselves', async () => {
+  await reset();
+  await sharedOwnership();
+  const db = await asUser('deputy', { role: 'admin' });
+  await assertSucceeds(updateDoc(doc(db, 'config', 'company'), { ownerUids: ['boss'] }));
+});
+
+test('the last owner cannot be removed', async () => {
+  await reset();
+  await establishedCompany();
+  const db = await asAdmin();
+  await assertFails(updateDoc(doc(db, 'config', 'company'), { ownerUids: [] }));
+});
+
+test('somebody can only be an owner once', async () => {
+  await reset();
+  await establishedCompany();
+  const db = await asAdmin();
+  await assertFails(updateDoc(doc(db, 'config', 'company'), { ownerUids: ['boss', 'boss'] }));
+});
+
+test('a second owner is protected from being deactivated just as the first is', async () => {
+  await reset();
+  await sharedOwnership();
+  const db = await asUser('third', { role: 'admin' });
+  await assertFails(
+    updateDoc(doc(db, 'users', 'deputy'), { active: false, updatedAt: serverTimestamp() }),
+  );
+});
+
+// --- Forgotten clock-outs ----------------------------------------------------
+
+/** A shift left open, clocked in `hoursAgo` hours ago. */
+async function stuckShift(uid, hoursAgo) {
+  const clockInAt = Timestamp.fromMillis(Date.now() - hoursAgo * 3600 * 1000);
+  await seed(async (db) => {
+    await setDoc(doc(db, 'shifts', 'stuck'), shiftDoc(uid, { clockInAt }));
+    await setDoc(doc(db, 'userState', uid), {
+      openShiftId: 'stuck',
+      lastPunchAt: clockInAt,
+    });
+  });
+}
+
+/** Close it the way the app does: the shift and the clock-state in one batch. */
+function endShift(db, uid) {
+  const batch = writeBatch(db);
+  batch.update(doc(db, 'shifts', 'stuck'), {
+    status: 'closed',
+    clockOutAt: serverTimestamp(),
+    durationMinutes: 0,
+    flags: ['FORCE_CLOSED'],
+    needsReview: true,
+    review: { status: 'pending', by: null, at: null, note: null },
+    updatedAt: serverTimestamp(),
+  });
+  batch.update(doc(db, 'userState', uid), { openShiftId: null });
+  return batch.commit();
+}
+
+test('an owner can end a shift left open more than a day', async () => {
+  await reset();
+  await establishedCompany();
+  await asUser('bob');
+  await stuckShift('bob', 30);
+  const db = await asAdmin();
+  await assertSucceeds(endShift(db, 'bob'));
+});
+
+test('a supervisor who is not an owner cannot end somebody else’s shift', async () => {
+  await reset();
+  await establishedCompany();
+  await asUser('bob');
+  await stuckShift('bob', 30);
+  const db = await asUser('deputy', { role: 'admin' });
+  await assertFails(endShift(db, 'bob'));
+});
+
+test('a shift that has not run a full day cannot be ended for the worker', async () => {
+  await reset();
+  await establishedCompany();
+  await asUser('bob');
+  await stuckShift('bob', 12);
+  const db = await asAdmin();
+  await assertFails(endShift(db, 'bob'));
+});
+
+test('a worker cannot be taken off the clock without their shift being closed', async () => {
+  await reset();
+  await establishedCompany();
+  await asUser('bob');
+  await stuckShift('bob', 30);
+  const db = await asAdmin();
+  await assertFails(updateDoc(doc(db, 'userState', 'bob'), { openShiftId: null }));
 });
 
 test('the owner cannot be deactivated, even by another supervisor', async () => {
@@ -881,26 +1031,6 @@ test('nobody can delete a shift', async () => {
   const { deleteDoc } = await import('firebase/firestore');
   await assertFails(deleteDoc(doc(admin, 'shifts', shiftId)));
   await assertFails(deleteDoc(doc(worker, 'shifts', shiftId)));
-});
-
-// --- Stuck shifts ----------------------------------------------------------
-
-test('an admin can free a worker whose shift is stuck open', async () => {
-  await reset();
-  await establishedCompany();
-  const shiftId = await openShiftFor('bob');
-  const db = await asAdmin();
-  const batch = writeBatch(db);
-  batch.update(doc(db, 'shifts', shiftId), {
-    status: 'closed',
-    clockOutAt: serverTimestamp(),
-    durationMinutes: 0,
-    needsReview: true,
-    review: { status: 'pending', by: null, at: null, note: 'Forgot to clock out' },
-    updatedAt: serverTimestamp(),
-  });
-  batch.update(doc(db, 'userState', 'bob'), { openShiftId: null });
-  await assertSucceeds(batch.commit());
 });
 
 // --- Equipment ---------------------------------------------------------------

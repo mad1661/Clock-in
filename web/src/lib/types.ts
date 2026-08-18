@@ -37,6 +37,13 @@ export interface JobSite {
   jobNumber?: string;
   /** Machines available at this site. Editable before or after the job runs. */
   equipmentIds?: string[];
+  /**
+   * The hours this site runs, as "HH:MM" in local time. Optional, and advisory:
+   * a punch outside them is recorded and flagged, never refused. See
+   * `hoursVerdict` in lib/policy.ts for why.
+   */
+  shiftStart?: string | null;
+  shiftEnd?: string | null;
 }
 
 /**

@@ -11,7 +11,7 @@ import {
 } from '../lib/geolocation';
 import { clockIn, clockOut, evaluatePunch } from '../lib/actions';
 import { errorMessage, toLocationError } from '../lib/errors';
-import { distanceMeters, POLICY } from '../lib/policy';
+import { describeHours, distanceMeters, hoursVerdict, POLICY } from '../lib/policy';
 import { fmtDistance, fmtDateTime, elapsedSince } from '../lib/format';
 import { Banner, Card, Spinner } from '../components/ui';
 import { withTimestamps } from '../lib/snapshot';
@@ -193,6 +193,15 @@ export default function ClockPage() {
   );
 
   const busy = phase === 'locating' || phase === 'submitting';
+
+  // Where right now falls against the site's hours. Re-read every tick so a
+  // worker still on the clock at knocking-off time is told so, rather than
+  // finding out the next morning. Advisory only — nothing here refuses a punch
+  // or moves a minute; see hoursVerdict() in lib/policy.ts.
+  const hours = useMemo(
+    () => (activeSite ? hoursVerdict(activeSite, new Date(now)) : 'none'),
+    [activeSite, now],
+  );
 
   // True once nothing is left to pick: a site is chosen, and either there are no
   // machines on it or one is already selected.
@@ -390,6 +399,25 @@ export default function ClockPage() {
 
         {phase === 'locating' && (
           <LocatingReadout fix={fix} distance={liveDistance} inside={preview?.verified ?? null} />
+        )}
+
+        {activeSite && hours !== 'none' && hours !== 'inside' && !busy && !result && (
+          <div style={{ marginTop: '0.9rem' }}>
+            <Banner
+              kind="warning"
+              title={
+                isClockedIn
+                  ? `${activeSite.name} has finished for the day`
+                  : `It is outside ${activeSite.name}'s hours`
+              }
+            >
+              {isClockedIn
+                ? `This site runs ${describeHours(activeSite)}. Clock out when you actually stop — ` +
+                  `the real time is what gets recorded, and it is what you get paid for.`
+                : `This site runs ${describeHours(activeSite)}. You can still clock in and these ` +
+                  `hours count, but your supervisor will be asked to confirm them.`}
+            </Banner>
+          </div>
         )}
 
         <button

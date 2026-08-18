@@ -8,6 +8,7 @@ import {
 } from 'firebase/auth';
 import {
   collection,
+  deleteField,
   doc,
   getDoc,
   runTransaction,
@@ -20,7 +21,7 @@ import {
 import { auth, db, useEmulators } from '../firebase';
 import type { LocationFix } from './geolocation';
 import { describeDevice } from './device';
-import { distanceMeters } from './policy';
+import { distanceMeters, hoursVerdict } from './policy';
 import type { DailyTicket, Equipment, JobSite, Role, Shift, UserDoc } from './types';
 
 /**
@@ -79,7 +80,7 @@ export async function bootstrapCompany(displayName: string) {
     updatedAt: nowServer(),
   });
   batch.set(doc(db, 'config', 'company'), {
-    ownerUid: user.uid,
+    ownerUids: [user.uid],
     name: 'Coburn Equipment Rentals',
     createdAt: nowServer(),
   });
@@ -242,6 +243,8 @@ export async function upsertJobSite(input: {
   customer?: string;
   jobNumber?: string;
   equipmentIds?: string[];
+  shiftStart?: string | null;
+  shiftEnd?: string | null;
 }) {
   const ref = input.id ? doc(db, 'jobSites', input.id) : doc(collection(db, 'jobSites'));
   await setDoc(
@@ -258,6 +261,8 @@ export async function upsertJobSite(input: {
       customer: (input.customer ?? '').trim(),
       jobNumber: (input.jobNumber ?? '').trim(),
       equipmentIds: input.equipmentIds ?? [],
+      shiftStart: input.shiftStart || null,
+      shiftEnd: input.shiftEnd || null,
       updatedAt: nowServer(),
     },
     { merge: true },
@@ -369,6 +374,34 @@ export function evaluatePunch(site: JobSite, location: LocationFix | null): Punc
   };
 }
 
+/**
+ * Adds the site-hours flags to a punch that has already been judged on location.
+ *
+ * Kept out of {@link evaluatePunch} on purpose: that function mirrors
+ * firestore.rules line for line, and the rules cannot check site hours — they
+ * see UTC and no timezone, so "was this 7am local" is not a question they can
+ * answer twice a year. So these flags are advisory. They cannot launder a
+ * punch, only mark one: `verified` is untouched, and `needsReview` is only ever
+ * turned on, which the rules always allow.
+ */
+function withHoursFlags(site: JobSite, outcome: PunchOutcome, kind: 'in' | 'out'): PunchOutcome {
+  const verdict = hoursVerdict(site);
+  const flag =
+    kind === 'in'
+      ? verdict === 'before' || verdict === 'after' || verdict === 'outside'
+        ? 'OUTSIDE_HOURS'
+        : null
+      : verdict === 'after' || verdict === 'outside'
+        ? 'LATE_CLOCK_OUT'
+        : null;
+  if (!flag) return outcome;
+  return {
+    ...outcome,
+    needsReview: true,
+    flags: Array.from(new Set([...outcome.flags, flag])),
+  };
+}
+
 function punchRecord(input: PunchInput, outcome: PunchOutcome) {
   return {
     at: nowServer(),
@@ -462,7 +495,7 @@ export async function clockIn(input: PunchInput) {
     return { shiftId: shiftRef.id, ...outcome };
   };
 
-  const outcome = evaluatePunch(input.site, input.location);
+  const outcome = withHoursFlags(input.site, evaluatePunch(input.site, input.location), 'in');
   try {
     return await commit(outcome);
   } catch (err) {
@@ -509,7 +542,7 @@ export async function clockOut(shift: Shift, input: PunchInput) {
 
   // Same fallback as clocking in, and it matters more here: a worker who cannot
   // clock out is stuck on the clock.
-  const outcome = evaluatePunch(input.site, input.location);
+  const outcome = withHoursFlags(input.site, evaluatePunch(input.site, input.location), 'out');
   try {
     return await commit(outcome);
   } catch (err) {
@@ -681,25 +714,87 @@ export async function adjustShift(
 }
 
 /**
- * Frees a worker whose shift is stuck open.
+ * How long a shift has to have been running before somebody else may end it.
  *
- * With no Cloud Functions there is no scheduled sweep for forgotten clock-outs,
- * so an administrator closes them by hand from the On site tab.
+ * Deliberately long. A shift still inside this window is somebody who is
+ * probably still working, and taking them off the clock from an office would
+ * cost them hours they are owed. Past it, it is a forgotten punch.
  */
-export async function forceCloseShift(shift: Shift, note: string) {
+export const STUCK_SHIFT_HOURS = 24;
+
+/** True once a shift has been open long enough for an owner to close it. */
+export function shiftIsStuck(shift: Shift, now: Date = new Date()): boolean {
+  if (shift.status !== 'open') return false;
+  const started = shift.clockInAt?.toDate?.();
+  if (!started) return false;
+  return now.getTime() - started.getTime() >= STUCK_SHIFT_HOURS * 3600_000;
+}
+
+/**
+ * Ends a shift that has been left open for more than a day.
+ *
+ * With no Cloud Functions there is no nightly sweep for forgotten clock-outs,
+ * so an owner closes them by hand from the On site tab. The rules only accept
+ * this from an owner and only past {@link STUCK_SHIFT_HOURS}.
+ *
+ * `endedAt` is when the worker actually stopped, as best anybody knows. It
+ * matters that this is asked for rather than assumed: hours worked have to be
+ * recorded and paid whether or not somebody remembered to press a button, so
+ * closing a shift at a guessed-low time is not a neutral act. Leaving it out is
+ * allowed, but records no hours at all and leaves the shift sitting in the
+ * review queue, unpaid, until somebody enters the real ones.
+ */
+export async function forceCloseShift(
+  shift: Shift,
+  { endedAt, note }: { endedAt: Date | null; note: string },
+) {
+  const started = shift.clockInAt.toDate();
+  if (endedAt && endedAt.getTime() < started.getTime()) {
+    throw new Error('That is before they clocked in.');
+  }
+  if (endedAt && endedAt.getTime() > Date.now()) {
+    throw new Error('That is in the future.');
+  }
+  const uid = auth.currentUser?.uid ?? null;
+  const minutes = endedAt
+    ? Math.round((endedAt.getTime() - started.getTime()) / 60000)
+    : 0;
+
   const batch = writeBatch(db);
   batch.update(doc(db, 'shifts', shift.id), {
     status: 'closed',
-    clockOutAt: shift.clockInAt,
-    durationMinutes: 0,
-    flags: Array.from(new Set([...(shift.flags ?? []), 'FORCE_CLOSED'])),
-    needsReview: true,
-    review: { status: 'pending', by: null, at: null, note: note.trim() || null },
+    clockOutAt: endedAt ?? shift.clockInAt,
+    durationMinutes: minutes,
+    flags: Array.from(
+      new Set([...(shift.flags ?? []), 'FORCE_CLOSED', ...(endedAt ? ['MANUAL_ENTRY'] : [])]),
+    ),
+    // An owner who supplied the finish time has ruled on it. One who did not
+    // has not, and the shift stays in the queue rather than quietly reading as
+    // a settled day with no hours in it.
+    needsReview: !endedAt,
+    review: endedAt
+      ? { status: 'approved', by: uid, at: nowServer(), note: note.trim() || null }
+      : { status: 'pending', by: null, at: null, note: note.trim() || null },
     updatedAt: nowServer(),
   });
   batch.update(doc(db, 'userState', shift.userId), { openShiftId: null });
   await batch.commit();
-  await audit('shift.auto_close', { targetId: shift.id, targetUserId: shift.userId, note });
+  await audit('shift.auto_close', {
+    targetId: shift.id,
+    targetUserId: shift.userId,
+    worker: shift.userDisplayName,
+    note,
+    from: {
+      clockInAt: started.toISOString(),
+      clockOutAt: null,
+      minutes: null,
+    },
+    to: {
+      clockInAt: started.toISOString(),
+      clockOutAt: endedAt?.toISOString() ?? null,
+      minutes: endedAt ? minutes : null,
+    },
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -790,16 +885,56 @@ export async function clearDailyTicketSignature(ticketId: string) {
 }
 
 /**
- * Hands ownership of the company to another supervisor.
+ * Reads who currently owns the company.
  *
- * A transfer, not a grant: there is one owner, and after this it is somebody
- * else. The rules only accept it from the current owner and only in favour of
- * an active supervisor, so the company cannot end up owned by a deactivated
- * account or by nobody at all.
+ * Tolerates the older single-`ownerUid` shape, which is what any company
+ * claimed before ownership could be shared still carries. `firestore.rules`
+ * reads it the same way, so the two never disagree.
  */
-export async function transferOwnership(toUid: string, toName: string) {
-  await updateDoc(doc(db, 'config', 'company'), { ownerUid: toUid });
-  await audit('company.owner_changed', { targetUserId: toUid, to: toName });
+export async function currentOwnerUids(): Promise<string[]> {
+  const snap = await getDoc(doc(db, 'config', 'company'));
+  const data = snap.data();
+  if (!data) return [];
+  if (Array.isArray(data.ownerUids)) return data.ownerUids as string[];
+  return data.ownerUid ? [data.ownerUid as string] : [];
+}
+
+/**
+ * Makes another supervisor an owner alongside the existing ones.
+ *
+ * Owners are equals, not a chain of succession — this grants, it does not hand
+ * over. The rules accept it only from somebody who is already an owner and only
+ * in favour of an active supervisor, so the list cannot come to contain a
+ * deactivated account or somebody with no way to use it.
+ */
+export async function addOwner(uid: string, name: string) {
+  const owners = await currentOwnerUids();
+  if (owners.includes(uid)) return;
+  await updateDoc(doc(db, 'config', 'company'), {
+    ownerUids: [...owners, uid],
+    // The company has moved to the shared shape; drop the single-owner field
+    // rather than leaving a stale name behind that looks authoritative.
+    ownerUid: deleteField(),
+  });
+  await audit('company.owner_added', { targetUserId: uid, to: name });
+}
+
+/**
+ * Takes ownership back off somebody, leaving them a supervisor.
+ *
+ * The last owner cannot be removed — the rules refuse to empty the list, since
+ * a company nobody owns is one nobody can ever fix.
+ */
+export async function removeOwner(uid: string, name: string) {
+  const owners = await currentOwnerUids();
+  const next = owners.filter((o) => o !== uid);
+  if (next.length === owners.length) return;
+  if (next.length === 0) throw new Error('A company has to have at least one owner.');
+  await updateDoc(doc(db, 'config', 'company'), {
+    ownerUids: next,
+    ownerUid: deleteField(),
+  });
+  await audit('company.owner_removed', { targetUserId: uid, to: name });
 }
 
 /** Sets the number the next new ticket will take, to match the paper book. */

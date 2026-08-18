@@ -81,21 +81,43 @@ and tap *use my current location*. Set the boundary radius — 100 m is a sensib
 default for a yard; make it big enough to cover where people actually park and
 walk in.
 
+**Hours** on that form are optional and are a warning, not a gate. Set 7:00 to
+17:30 and anybody clocking in at 5am is told they are outside the site's hours,
+is still allowed to clock in, and lands in your Review queue flagged. Nobody is
+ever refused a punch or clocked out automatically — hours actually worked have
+to be recorded and paid whether or not they were scheduled, so unauthorised
+hours are something you take up with the person, not something the app hides.
+See "Site hours" in README.md.
+
 **Workers** → **+ Add employee**. A one-time password is generated and shown
 **once**. Copy it and give it to them; they change it on first sign-in under
 **Account**. If you lose it, use **Send reset link**. Set their hourly wage here
 too — it drives the labour total on the timesheet and never appears on anything
 a customer sees.
 
-## 6. Owner and supervisors
+## 6. Owners and supervisors
 
-Whoever claimed the company is its **owner**, shown with an Owner badge under
-Workers. Supervisors run the yard; the owner decides who the supervisors are.
+Whoever claimed the company is its first **owner**, shown with an Owner badge
+under Workers. Supervisors run the yard; owners decide who the supervisors are.
 
-**Make owner** appears next to any active supervisor, and only the owner sees
-it. It is a transfer — you stay a supervisor, they become the owner, and only
-they can hand it back. The owner cannot be deactivated or demoted by anyone, so
-there is no way to end up with a company nobody owns.
+**Make owner** appears next to any active supervisor, and only an owner sees it.
+It grants rather than hands over: you both end up owners, and there can be as
+many as you like. **Remove as owner** takes it back off somebody, and **Give up
+ownership** steps yourself back down to supervisor.
+
+Owners are equals — anyone holding it can add or remove anyone else, including
+you. Pick the second one accordingly. The last owner cannot be removed, and no
+owner can be deactivated or demoted while they hold it, so there is no way to
+end up with a company nobody owns. To let somebody go, remove them as an owner
+first, then deactivate them.
+
+**End shift** appears on the **On site** tab next to anybody who has been on the
+clock more than 24 hours, and only owners see it. Ending one asks when they
+actually finished — enter it if you know it, and the hours are recorded and
+approved. Leave it blank and the shift is closed with no hours and left in
+Review until somebody enters the real ones. It is deliberately not offered
+sooner: a shift shorter than a day belongs to somebody who may well still be
+working.
 
 **Activity** lists every change anyone has made, newest first, searchable and
 exportable as CSV. Changes to somebody's hours show what the times were before
