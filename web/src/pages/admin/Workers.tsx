@@ -236,6 +236,7 @@ function WorkerForm({
   const [displayName, setDisplayName] = useState(existing?.displayName ?? '');
   const [role, setRole] = useState<Role>(existing?.role ?? 'worker');
   const [jobSiteIds, setJobSiteIds] = useState<string[]>(existing?.jobSiteIds ?? []);
+  const [wage, setWage] = useState(existing?.hourlyRate == null ? '' : String(existing.hourlyRate));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -244,12 +245,20 @@ function WorkerForm({
     setBusy(true);
     setError(null);
     try {
+      const hourlyRate = wage.trim() === '' ? null : Number(wage);
       if (existing) {
-        await updateWorker(existing.uid, { displayName, role, jobSiteIds });
+        await updateWorker(existing.uid, { displayName, role, jobSiteIds, hourlyRate });
         onSaved();
       } else {
         const generated = makePassword();
-        await createWorker({ email, displayName, role, jobSiteIds, password: generated });
+        await createWorker({
+          email,
+          displayName,
+          role,
+          jobSiteIds,
+          password: generated,
+          hourlyRate,
+        });
         onSaved({ displayName, email: email.trim().toLowerCase(), password: generated });
       }
     } catch (err) {
@@ -296,6 +305,23 @@ function WorkerForm({
             <option value="worker">Worker — can clock in and out</option>
             <option value="admin">Administrator — full access</option>
           </select>
+        </div>
+
+        <div className="field">
+          <label htmlFor="w-wage">Hourly wage ($)</label>
+          <input
+            id="w-wage"
+            type="number"
+            inputMode="decimal"
+            step="0.01"
+            min="0"
+            value={wage}
+            onChange={(e) => setWage(e.target.value)}
+            placeholder="38.50"
+          />
+          <p className="hint">
+            Used for labour totals on the timesheet. Never appears on a customer's ticket.
+          </p>
         </div>
 
         <div className="field">

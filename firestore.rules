@@ -191,6 +191,42 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // --- Equipment ----------------------------------------------------------
+    // The yard's machine list. Every active employee can read it, because the
+    // clock screen has to offer the operator the machine they are climbing into.
+
+    match /equipment/{equipmentId} {
+      allow read: if isActive();
+
+      allow create, update: if isAdmin()
+        && request.resource.data.type is string
+        && request.resource.data.type.size() > 0
+        && request.resource.data.type.size() <= 60
+        && request.resource.data.machineNo is string
+        && request.resource.data.machineNo.size() <= 20
+        && request.resource.data.active is bool
+        && (request.resource.data.get('hourlyRate', null) == null
+            || (request.resource.data.hourlyRate is number
+                && request.resource.data.hourlyRate >= 0))
+        && request.resource.data.updatedAt == request.time;
+
+      // Retired with active:false. A ticket printed last year still names it.
+      allow delete: if false;
+    }
+
+    // --- Daily rental tickets ----------------------------------------------
+    // The document handed to the customer. Only a supervisor may touch one: it
+    // is a billing record, and the hours on it are the hours being charged for.
+
+    match /dailyTickets/{ticketId} {
+      allow read: if isAdmin();
+      allow create, update: if isAdmin()
+        && request.resource.data.jobSiteId is string
+        && request.resource.data.date is string
+        && request.resource.data.updatedAt == request.time;
+      allow delete: if false;
+    }
+
     // --- Clock state --------------------------------------------------------
     // One document per worker recording which shift is open. Rules cannot run a
     // query, so this single document is what makes "you cannot clock in twice"
@@ -280,6 +316,14 @@ service cloud.firestore {
             || (resource.data.needsReview == false
                 && punchVerified(request.resource.data.clockOut,
                                  siteFor(resource.data.jobSiteId))))
+        // Flags are evidence for the supervisor. Clocking out may add to them —
+        // the second punch has its own problems — but never quietly drop the
+        // ones the clock-in earned.
+        //
+        // Defaulted rather than read directly: a shift that was already open
+        // when this rule shipped has no `flags` field at all, and reading a
+        // missing field is an error that would strand that worker on the clock.
+        && request.resource.data.get('flags', []).hasAll(resource.data.get('flags', []))
         && getAfter(/databases/$(database)/documents/userState/$(request.auth.uid))
              .data.openShiftId == null;
 

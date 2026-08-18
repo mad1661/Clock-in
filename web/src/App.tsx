@@ -11,6 +11,8 @@ import JobSites from './pages/admin/JobSites';
 import Timesheets from './pages/admin/Timesheets';
 import ReviewQueue from './pages/admin/ReviewQueue';
 import OnSiteNow from './pages/admin/OnSiteNow';
+import Equipment from './pages/admin/Equipment';
+import DailyTicket from './pages/admin/DailyTicket';
 
 function Shell({ children }: { children: React.ReactNode }) {
   const { profile, isAdmin, signOut } = useAuth();
@@ -38,9 +40,11 @@ function Shell({ children }: { children: React.ReactNode }) {
         <NavLink to="/timesheet">My hours</NavLink>
         {isAdmin && <NavLink to="/admin/on-site">On site</NavLink>}
         {isAdmin && <NavLink to="/admin/review">Review</NavLink>}
+        {isAdmin && <NavLink to="/admin/ticket">Rental ticket</NavLink>}
         {isAdmin && <NavLink to="/admin/timesheets">Timesheets</NavLink>}
         {isAdmin && <NavLink to="/admin/workers">Workers</NavLink>}
         {isAdmin && <NavLink to="/admin/sites">Job sites</NavLink>}
+        {isAdmin && <NavLink to="/admin/equipment">Equipment</NavLink>}
         <NavLink to="/account">Account</NavLink>
       </nav>
 
@@ -172,6 +176,22 @@ export function App() {
           element={
             <RequireAdmin>
               <ReviewQueue />
+            </RequireAdmin>
+          }
+        />
+        <Route
+          path="/admin/equipment"
+          element={
+            <RequireAdmin>
+              <Equipment />
+            </RequireAdmin>
+          }
+        />
+        <Route
+          path="/admin/ticket"
+          element={
+            <RequireAdmin>
+              <DailyTicket />
             </RequireAdmin>
           }
         />

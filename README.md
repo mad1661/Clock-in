@@ -67,6 +67,10 @@ Once deployed, the app lives at **https://clockit-bc990.web.app**.
   the worker sees on their timesheet.
 - See which handset each punch was made on.
 - A live **On site** board: who is clocked in, at which site, for how long.
+- Keep the yard's **equipment list**, assign machines to a job — before it starts
+  or after it has finished — and set each machine's rental rate.
+- Set each employee's hourly wage; the timesheet totals labour cost from it.
+- The **Daily Rental Ticket & Equipment Report**, built from the clock.
 - California overtime worked out per week, including the daily rules — four
   ten-hour days is 8 hours of overtime even though the week totals 40.
 
@@ -141,6 +145,38 @@ captured evidence.
 
 If workers could edit their own hours directly, every other check in this app
 would be decoration. That is the reason the feature is shaped the way it is.
+
+### The daily rental ticket
+
+The report the customer gets is assembled from the day's shifts rather than
+written out again by hand. An operator picks the machine they are climbing into
+when they clock in; that, and the times, is everything the ticket's table needs:
+
+| Column | Where it comes from |
+|---|---|
+| Type of equipment, Machine no. | The machine the operator picked at clock-in |
+| Name of operator | Their employee record |
+| Time in / out, twice | Their shifts that day, in order — the two pairs are the morning and the afternoon |
+| Operator hours | Hours worked, with the four-hour show-up minimum applied |
+| Tractor hours | The hour meter, read off the machine by the operator at clock-out or typed in by the supervisor |
+
+Two things are deliberately not automatic. **Tractor hours** default to the
+hours worked but are meant to be overwritten: the meter records what the machine
+actually ran, which is less than the operator was there for whenever it broke
+down or sat waiting on another trade. And the **four-hour minimum never applies
+to machine hours** — that minimum is what the yard owes an operator who turned
+out, not something to bill a customer for a machine that stood still.
+
+Rebuilding a ticket re-derives its rows from the timesheet, picking up any
+corrections approved since, while keeping the meter readings already typed in.
+Saving fixes the ticket number, which is handed out one at a time by a Firestore
+transaction so two supervisors saving at once cannot land on the same number.
+Set the starting number to carry on from the paper book.
+
+The printed page is the paper form, deliberately: same columns, same conditions
+text, same footer. Rental charges are shown on screen for the office and kept
+**off** the printed copy, because the form the customer has always been handed is
+a record of hours and pricing belongs on the invoice.
 
 ### Knowing what they clocked in on
 

@@ -84,12 +84,31 @@ export default function Timesheets() {
 
   const totals = useMemo(() => {
     const list = shifts ?? [];
+    const wages = new Map(workers.map((w) => [w.uid, w.hourlyRate ?? null]));
+
+    // Labour cost at each worker's own rate. Anyone with no wage on file is
+    // counted separately rather than silently valued at zero — a total that
+    // quietly leaves people out is worse than one that says who is missing.
+    let cost = 0;
+    let unpriced = 0;
+    for (const shift of list) {
+      const rate = wages.get(shift.userId) ?? null;
+      const minutes = shift.durationMinutes ?? 0;
+      if (rate == null) {
+        if (minutes > 0) unpriced += 1;
+      } else {
+        cost += (minutes / 60) * rate;
+      }
+    }
+
     return {
       count: list.length,
       minutes: list.reduce((sum, s) => sum + (s.durationMinutes ?? 0), 0),
       flagged: list.filter((s) => s.needsReview).length,
+      cost,
+      unpriced,
     };
-  }, [shifts]);
+  }, [shifts, workers]);
 
   function exportCsv() {
     const rows = [
@@ -224,6 +243,19 @@ export default function Timesheets() {
           <span>
             <strong>{(totals.minutes / 60).toFixed(2)}</strong> hours
           </span>
+          {totals.cost > 0 && (
+            <span>
+              <strong>
+                {totals.cost.toLocaleString(undefined, { style: 'currency', currency: 'USD' })}
+              </strong>{' '}
+              labour
+            </span>
+          )}
+          {totals.unpriced > 0 && (
+            <span title="Set an hourly wage under Workers">
+              <strong>{totals.unpriced}</strong> shifts with no wage set
+            </span>
+          )}
           {totals.flagged > 0 && (
             <span>
               <strong>{totals.flagged}</strong> awaiting review

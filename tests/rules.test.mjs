@@ -104,6 +104,7 @@ function shiftDoc(uid, overrides = {}) {
     clockOutAt: null,
     durationMinutes: null,
     needsReview: false,
+    flags: [],
     review: { status: 'approved', by: null, at: null, note: null },
     pendingEdit: null,
     hasPendingEdit: false,
@@ -521,6 +522,7 @@ function clockOut(db, uid, shiftId, { needsReview = false, clockOut: out } = {})
     clockOut: out ?? punch(),
     clockOutAt: serverTimestamp(),
     needsReview,
+    flags: [],
     updatedAt: serverTimestamp(),
   });
   batch.update(doc(db, 'userState', uid), { openShiftId: null, lastPunchAt: serverTimestamp() });
@@ -566,6 +568,35 @@ test('clocking out cannot rewrite the clock-in that was recorded', async () => {
     clockOut: punch(),
     clockOutAt: serverTimestamp(),
     needsReview: false,
+    updatedAt: serverTimestamp(),
+  });
+  batch.update(doc(db, 'userState', 'bob'), { openShiftId: null, lastPunchAt: serverTimestamp() });
+  await assertFails(batch.commit());
+});
+
+test('a shift opened before flags existed can still be clocked out', async () => {
+  await reset();
+  await establishedCompany();
+  // Stripped back to how a record written before flags existed actually looks.
+  const shiftId = await openShiftFor('bob');
+  const { deleteField } = await import('firebase/firestore');
+  await seed((d) => updateDoc(doc(d, 'shifts', shiftId), { flags: deleteField() }));
+  const db = await asUser('bob');
+  await assertSucceeds(clockOut(db, 'bob', shiftId));
+});
+
+test('clocking out cannot erase the flags the clock-in earned', async () => {
+  await reset();
+  await establishedCompany();
+  const shiftId = await openShiftFor('bob', { needsReview: true, flags: ['OUTSIDE_GEOFENCE'] });
+  const db = await asUser('bob');
+  const batch = writeBatch(db);
+  batch.update(doc(db, 'shifts', shiftId), {
+    status: 'closed',
+    clockOut: punch(),
+    clockOutAt: serverTimestamp(),
+    needsReview: true,
+    flags: [],
     updatedAt: serverTimestamp(),
   });
   batch.update(doc(db, 'userState', 'bob'), { openShiftId: null, lastPunchAt: serverTimestamp() });
@@ -735,6 +766,120 @@ test('an admin can free a worker whose shift is stuck open', async () => {
   });
   batch.update(doc(db, 'userState', 'bob'), { openShiftId: null });
   await assertSucceeds(batch.commit());
+});
+
+// --- Equipment ---------------------------------------------------------------
+
+const machine = (over = {}) => ({
+  id: 'd8t2',
+  type: 'D8T',
+  machineNo: '2',
+  description: '',
+  active: true,
+  updatedAt: serverTimestamp(),
+  ...over,
+});
+
+test('an admin keeps the machine list', async () => {
+  await reset();
+  await establishedCompany();
+  const db = await asAdmin();
+  await assertSucceeds(setDoc(doc(db, 'equipment', 'd8t2'), machine()));
+  await assertSucceeds(
+    updateDoc(doc(db, 'equipment', 'd8t2'), { active: false, updatedAt: serverTimestamp() }),
+  );
+});
+
+test('a worker can read the machine list but not change it', async () => {
+  await reset();
+  await establishedCompany();
+  await seed((db) => setDoc(doc(db, 'equipment', 'd8t2'), machine()));
+  const db = await asUser('bob');
+  // They need to read it: the clock screen offers them the machine they are on.
+  await assertSucceeds(getDocs(collection(db, 'equipment')));
+  await assertFails(setDoc(doc(db, 'equipment', 'sneaky'), machine({ id: 'sneaky' })));
+  await assertFails(
+    updateDoc(doc(db, 'equipment', 'd8t2'), { type: 'D11', updatedAt: serverTimestamp() }),
+  );
+});
+
+test('a machine is retired, never deleted', async () => {
+  await reset();
+  await establishedCompany();
+  await seed((db) => setDoc(doc(db, 'equipment', 'd8t2'), machine()));
+  const db = await asAdmin();
+  const { deleteDoc } = await import('firebase/firestore');
+  await assertFails(deleteDoc(doc(db, 'equipment', 'd8t2')));
+});
+
+test('a machine needs a type', async () => {
+  await reset();
+  await establishedCompany();
+  const db = await asAdmin();
+  await assertFails(setDoc(doc(db, 'equipment', 'blank'), machine({ id: 'blank', type: '' })));
+});
+
+// --- Daily rental tickets ----------------------------------------------------
+
+const ticket = (over = {}) => ({
+  id: `${SITE.id}_2026-08-03`,
+  ticketNumber: 60516,
+  jobSiteId: SITE.id,
+  jobSiteName: SITE.name,
+  customer: 'CEI',
+  location: 'N. Fontana',
+  jobNumber: '',
+  date: '2026-08-03',
+  rows: [],
+  comments: '',
+  supervisorName: null,
+  signedAt: null,
+  updatedAt: serverTimestamp(),
+  ...over,
+});
+
+test('a supervisor writes the rental ticket', async () => {
+  await reset();
+  await establishedCompany();
+  const db = await asAdmin();
+  await assertSucceeds(setDoc(doc(db, 'dailyTickets', `${SITE.id}_2026-08-03`), ticket()));
+  await assertSucceeds(getDocs(collection(db, 'dailyTickets')));
+});
+
+test('a worker cannot read or write the customer’s billing ticket', async () => {
+  await reset();
+  await establishedCompany();
+  await seed((db) => setDoc(doc(db, 'dailyTickets', `${SITE.id}_2026-08-03`), ticket()));
+  const db = await asUser('bob');
+  await assertFails(getDocs(collection(db, 'dailyTickets')));
+  await assertFails(getDoc(doc(db, 'dailyTickets', `${SITE.id}_2026-08-03`)));
+  await assertFails(
+    updateDoc(doc(db, 'dailyTickets', `${SITE.id}_2026-08-03`), {
+      rows: [],
+      updatedAt: serverTimestamp(),
+    }),
+  );
+});
+
+test('a ticket cannot be back-dated by the client clock', async () => {
+  await reset();
+  await establishedCompany();
+  const db = await asAdmin();
+  await assertFails(
+    setDoc(
+      doc(db, 'dailyTickets', `${SITE.id}_2026-08-03`),
+      ticket({ updatedAt: Timestamp.fromMillis(Date.now() - 86400000) }),
+    ),
+  );
+});
+
+test('a ticket cannot be deleted once it exists', async () => {
+  await reset();
+  await establishedCompany();
+  await seed((db) => setDoc(doc(db, 'dailyTickets', `${SITE.id}_2026-08-03`), ticket()));
+  const db = await asAdmin();
+  const { deleteDoc } = await import('firebase/firestore');
+  await assertFails(deleteDoc(doc(db, 'dailyTickets', `${SITE.id}_2026-08-03`)));
 });
 
 // --- Audit -----------------------------------------------------------------

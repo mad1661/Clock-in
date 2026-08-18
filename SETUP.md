@@ -78,7 +78,29 @@ walk in.
 
 **Workers** → **+ Add employee**. A one-time password is generated and shown
 **once**. Copy it and give it to them; they change it on first sign-in under
-**Account**. If you lose it, use **Send reset link**.
+**Account**. If you lose it, use **Send reset link**. Set their hourly wage here
+too — it drives the labour total on the timesheet and never appears on anything
+a customer sees.
+
+## 6. Equipment and the rental ticket
+
+**Equipment** → **+ Add machine**. Type and machine number exactly as they
+should print — `D8T`, `2`. Add the rental rate per hour while you are there.
+
+Then open the job site and tick the machines that are on that job. You can
+change that list at any point, before the job starts or after it has finished:
+the ticket is built from the machine each operator actually clocked in on, not
+from the assignment list.
+
+Operators then pick their machine when they clock in, and are asked for the hour
+meter when they clock out.
+
+**Rental ticket** → pick the site and the day. The table fills itself in from the
+clock. Type in any hour-meter readings and downtime, **Save** to fix the ticket
+number, then **Print / PDF**.
+
+To carry on from your paper ticket book, set the next number once — it is stored
+on the company record and each new ticket takes the next one.
 
 ---
 

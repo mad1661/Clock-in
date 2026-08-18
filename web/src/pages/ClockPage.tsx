@@ -15,7 +15,7 @@ import { distanceMeters, POLICY } from '../lib/policy';
 import { fmtDistance, fmtDateTime, elapsedSince } from '../lib/format';
 import { Banner, Card, Spinner } from '../components/ui';
 import { withTimestamps } from '../lib/snapshot';
-import type { JobSite, Shift } from '../lib/types';
+import { equipmentLabel, type Equipment, type JobSite, type Shift } from '../lib/types';
 
 type Phase = 'idle' | 'locating' | 'submitting';
 
@@ -42,6 +42,9 @@ export default function ClockPage() {
   const [sites, setSites] = useState<JobSite[] | null>(null);
   const [openShift, setOpenShift] = useState<Shift | null | undefined>(undefined);
   const [selectedSiteId, setSelectedSiteId] = useState('');
+  const [machines, setMachines] = useState<Equipment[]>([]);
+  const [selectedEquipmentId, setSelectedEquipmentId] = useState('');
+  const [tractorHours, setTractorHours] = useState('');
 
   const [phase, setPhase] = useState<Phase>('idle');
   const [fix, setFix] = useState<LocationFix | null>(null);
@@ -68,6 +71,14 @@ export default function ClockPage() {
       () => setSites([]),
     );
   }, [profile?.jobSiteIds]);
+
+  useEffect(() => {
+    return onSnapshot(
+      query(collection(db, 'equipment'), where('active', '==', true)),
+      (snap) => setMachines(snap.docs.map((d) => ({ ...(d.data() as Equipment), id: d.id }))),
+      () => setMachines([]),
+    );
+  }, []);
 
   useEffect(() => {
     if (!user) return;
@@ -116,6 +127,47 @@ export default function ClockPage() {
     return sites?.find((s) => s.id === id) ?? null;
   }, [sites, openShift, selectedSiteId]);
 
+  // Only the machines assigned to this site. An operator should not be scrolling
+  // past the whole yard to find the one they are sitting in.
+  const siteMachines = useMemo(() => {
+    const ids = activeSite?.equipmentIds ?? [];
+    return machines
+      .filter((m) => ids.includes(m.id))
+      .sort((a, b) => equipmentLabel(a).localeCompare(equipmentLabel(b)));
+  }, [machines, activeSite]);
+
+  const selectedMachine = useMemo(
+    () => siteMachines.find((m) => m.id === selectedEquipmentId) ?? null,
+    [siteMachines, selectedEquipmentId],
+  );
+
+  /** The machine recorded on the shift being closed. */
+  const openShiftMachine = useMemo(
+    () => machines.find((m) => m.id === openShift?.equipmentId) ?? null,
+    [machines, openShift],
+  );
+
+  // Default to the only machine, or the one they were on last.
+  useEffect(() => {
+    if (!siteMachines.length) {
+      setSelectedEquipmentId('');
+      return;
+    }
+    if (siteMachines.some((m) => m.id === selectedEquipmentId)) return;
+    if (siteMachines.length === 1) {
+      setSelectedEquipmentId(siteMachines[0].id);
+      return;
+    }
+    const remembered = window.localStorage.getItem('lastEquipmentId');
+    setSelectedEquipmentId(
+      remembered && siteMachines.some((m) => m.id === remembered) ? remembered : '',
+    );
+  }, [siteMachines, selectedEquipmentId]);
+
+  useEffect(() => {
+    if (selectedEquipmentId) window.localStorage.setItem('lastEquipmentId', selectedEquipmentId);
+  }, [selectedEquipmentId]);
+
   const liveDistance = useMemo(
     () => (fix && activeSite ? distanceMeters(fix, activeSite) : null),
     [fix, activeSite],
@@ -148,10 +200,18 @@ export default function ClockPage() {
 
     setPhase('submitting');
     try {
-      const input = { site: activeSite, location, locationError };
+      const hours = tractorHours.trim() === '' ? null : Number(tractorHours);
+      const input = {
+        site: activeSite,
+        location,
+        locationError,
+        equipment: isClockedIn ? null : selectedMachine,
+        tractorHours: Number.isFinite(hours as number) ? hours : null,
+      };
       const outcome = isClockedIn
         ? await clockOut(openShift as Shift, input)
         : await clockIn(input);
+      setTractorHours('');
 
       setResult({
         action: isClockedIn ? 'out' : 'in',
@@ -163,7 +223,7 @@ export default function ClockPage() {
     } finally {
       setPhase('idle');
     }
-  }, [activeSite, isClockedIn, openShift]);
+  }, [activeSite, isClockedIn, openShift, selectedMachine, tractorHours]);
 
   // --- Render -------------------------------------------------------------
 
@@ -221,7 +281,29 @@ export default function ClockPage() {
             <p className="elapsed">{elapsedSince(openShift.clockInAt.toMillis(), now)}</p>
             <p className="hint" style={{ textAlign: 'center', marginTop: 0 }}>
               Since {fmtDateTime(openShift.clockInAt)}
+              {openShiftMachine ? ` · ${equipmentLabel(openShiftMachine)}` : ''}
             </p>
+
+            {openShift.equipmentId && (
+              <div className="field">
+                <label htmlFor="hours">Hour meter (optional)</label>
+                <input
+                  id="hours"
+                  type="number"
+                  inputMode="decimal"
+                  step="0.1"
+                  min="0"
+                  value={tractorHours}
+                  onChange={(e) => setTractorHours(e.target.value)}
+                  placeholder="Reading on the machine"
+                  disabled={busy}
+                />
+                <p className="hint">
+                  Read it off {equipmentLabel(openShiftMachine ?? { type: 'the machine' })} before
+                  you climb down. Leave it blank if you cannot — your supervisor can fill it in.
+                </p>
+              </div>
+            )}
           </>
         ) : (
           <div className="field">
@@ -240,6 +322,27 @@ export default function ClockPage() {
                 </option>
               ))}
             </select>
+          </div>
+        )}
+
+        {!isClockedIn && siteMachines.length > 0 && (
+          <div className="field">
+            <label htmlFor="machine">Machine</label>
+            <select
+              id="machine"
+              value={selectedEquipmentId}
+              onChange={(e) => setSelectedEquipmentId(e.target.value)}
+              disabled={busy}
+            >
+              <option value="">Not on a machine</option>
+              {siteMachines.map((machine) => (
+                <option key={machine.id} value={machine.id}>
+                  {equipmentLabel(machine)}
+                  {machine.description ? ` — ${machine.description}` : ''}
+                </option>
+              ))}
+            </select>
+            <p className="hint">This is what puts you on the customer's rental ticket.</p>
           </div>
         )}
 

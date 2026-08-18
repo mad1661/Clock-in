@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test:ui": "node ui-smoke.mjs",
-    "test:overtime": "node --experimental-strip-types overtime.test.mjs"
+    "test:overtime": "node --experimental-strip-types overtime.test.mjs",
+    "test:ticket": "node --experimental-strip-types --test ticket.test.mjs"
   },
   "dependencies": {
     "firebase": "^11.1.0",

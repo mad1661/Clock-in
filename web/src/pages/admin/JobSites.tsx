@@ -3,11 +3,12 @@ import { collection, onSnapshot, orderBy, query } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { retireJobSite, upsertJobSite } from '../../lib/actions';
 import { errorMessage } from '../../lib/errors';
+import { equipmentLabel } from '../../lib/types';
 import { acquireLocation } from '../../lib/geolocation';
 import { fmtDistance } from '../../lib/format';
 import { Banner, Card, EmptyState, Modal, Spinner } from '../../components/ui';
 import { geocode, type GeocodeHit } from '../../lib/basemap';
-import type { JobSite } from '../../lib/types';
+import type { Equipment, JobSite } from '../../lib/types';
 
 // Only admins ever open a map, and the crew's clock screen must stay small on
 // a bad connection, so Leaflet is split out of the main bundle.
@@ -19,6 +20,13 @@ export default function JobSites() {
   const [sites, setSites] = useState<JobSite[] | null>(null);
   const [editing, setEditing] = useState<JobSite | 'new' | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [machines, setMachines] = useState<Equipment[]>([]);
+
+  useEffect(() => {
+    return onSnapshot(query(collection(db, 'equipment'), orderBy('type')), (snap) =>
+      setMachines(snap.docs.map((d) => ({ ...(d.data() as Equipment), id: d.id }))),
+    );
+  }, []);
 
   useEffect(() => {
     return onSnapshot(
@@ -39,6 +47,7 @@ export default function JobSites() {
 
       {editing && (
         <SiteForm
+          machines={machines}
           site={editing === 'new' ? null : editing}
           onClose={() => setEditing(null)}
           onSaved={() => setEditing(null)}
@@ -115,15 +124,20 @@ export default function JobSites() {
 
 function SiteForm({
   site,
+  machines,
   onClose,
   onSaved,
 }: {
   site: JobSite | null;
+  machines: Equipment[];
   onClose: () => void;
   onSaved: () => void;
 }) {
   const [name, setName] = useState(site?.name ?? '');
   const [address, setAddress] = useState(site?.address ?? '');
+  const [customer, setCustomer] = useState(site?.customer ?? '');
+  const [jobNumber, setJobNumber] = useState(site?.jobNumber ?? '');
+  const [equipmentIds, setEquipmentIds] = useState<string[]>(site?.equipmentIds ?? []);
   const [lat, setLat] = useState(site ? String(site.lat) : '');
   const [lng, setLng] = useState(site ? String(site.lng) : '');
   const [radius, setRadius] = useState(String(site?.radiusMeters ?? DEFAULT_RADIUS));
@@ -203,6 +217,9 @@ function SiteForm({
         lng: Number(lng),
         radiusMeters: Number(radius),
         active,
+        customer,
+        jobNumber,
+        equipmentIds,
       });
       onSaved();
     } catch (err) {
@@ -225,6 +242,28 @@ function SiteForm({
         <div className="field">
           <label htmlFor="s-address">Address</label>
           <input id="s-address" value={address} onChange={(e) => setAddress(e.target.value)} />
+        </div>
+
+        <div className="field">
+          <label htmlFor="s-customer">Customer</label>
+          <input
+            id="s-customer"
+            value={customer}
+            onChange={(e) => setCustomer(e.target.value)}
+            placeholder="CEI"
+            autoComplete="off"
+          />
+          <p className="hint">Prints on the daily rental ticket.</p>
+        </div>
+
+        <div className="field">
+          <label htmlFor="s-jobno">Job number (optional)</label>
+          <input
+            id="s-jobno"
+            value={jobNumber}
+            onChange={(e) => setJobNumber(e.target.value)}
+            autoComplete="off"
+          />
         </div>
 
         <div className="field">
@@ -367,6 +406,53 @@ function SiteForm({
             </label>
           </div>
         )}
+
+        <div className="field">
+          <label>Equipment on this job</label>
+          <p className="hint" style={{ marginTop: 0 }}>
+            Operators pick from these when they clock in. Change it whenever you like — before the
+            job starts or after it has finished; the ticket is rebuilt from the machine each
+            operator was actually on.
+          </p>
+          {machines.filter((m) => m.active).length === 0 ? (
+            <p className="hint">
+              No machines in service yet. Add them under <strong>Equipment</strong>.
+            </p>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+              {machines
+                .filter((m) => m.active || equipmentIds.includes(m.id))
+                .map((machine) => (
+                  <label
+                    key={machine.id}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.6rem',
+                      color: 'var(--text)',
+                      fontWeight: 500,
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      style={{ width: 20, height: 20, minHeight: 20, flex: '0 0 auto' }}
+                      checked={equipmentIds.includes(machine.id)}
+                      onChange={(e) =>
+                        setEquipmentIds((prev) =>
+                          e.target.checked
+                            ? [...prev, machine.id]
+                            : prev.filter((id) => id !== machine.id),
+                        )
+                      }
+                    />
+                    {equipmentLabel(machine)}
+                    {machine.description ? ` — ${machine.description}` : ''}
+                    {!machine.active && ' (retired)'}
+                  </label>
+                ))}
+            </div>
+          )}
+        </div>
 
         <button type="submit" className="primary block" disabled={busy}>
           {busy ? 'Saving…' : site ? 'Save changes' : 'Create job site'}

@@ -794,3 +794,225 @@ a.small {
     border-radius: 18px;
   }
 }
+
+/* --------------------------------------------------------------------------
+   Daily rental ticket
+
+   Laid out to match the paper form it replaces. The customers reading it have
+   been reading that form for years, and a redesign would only make them hunt
+   for the numbers.
+   -------------------------------------------------------------------------- */
+
+.ticket-sheet {
+  background: #fff;
+  color: #000;
+  border: 1px solid var(--line, #cbd3e0);
+  border-radius: 10px;
+  padding: 1.1rem;
+  margin-top: 1rem;
+  font-size: 0.82rem;
+}
+
+.ticket-head {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: start;
+  gap: 0.75rem;
+}
+
+.ticket-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  text-align: center;
+}
+
+.ticket-brand img {
+  width: 66px;
+  height: auto;
+}
+
+.ticket-title {
+  font-weight: 700;
+  font-size: 0.95rem;
+  letter-spacing: 0.01em;
+}
+
+.ticket-no-label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #555;
+}
+
+.ticket-no {
+  font-size: 1.3rem;
+  font-weight: 700;
+}
+
+.ticket-date {
+  text-align: right;
+}
+
+.ticket-meta {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.3rem 1.2rem;
+  margin: 0.9rem 0 0.6rem;
+  border-bottom: 1px solid #000;
+  padding-bottom: 0.5rem;
+}
+
+.ticket-meta .wide {
+  grid-column: 1 / -1;
+}
+
+.ticket-meta .k,
+.ticket-comments .k,
+.ticket-sign .k {
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 0.7rem;
+  letter-spacing: 0.05em;
+}
+
+.ticket-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.ticket-table th,
+.ticket-table td {
+  border: 1px solid #000;
+  padding: 0.2rem 0.3rem;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ticket-table th {
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  line-height: 1.15;
+  background: #f2f4f8;
+}
+
+.ticket-table td {
+  height: 1.6rem;
+}
+
+/* Operator name and equipment type get the room; times are narrow. */
+.ticket-table th:nth-child(1) { width: 13%; }
+.ticket-table th:nth-child(2) { width: 8%; }
+.ticket-table th:nth-child(3) { width: 9%; }
+.ticket-table th:nth-child(4) { width: 20%; }
+.ticket-table th:nth-child(9) { width: 9%; }
+
+.ticket-table .editable input {
+  width: 100%;
+  min-height: 0;
+  border: 0;
+  padding: 0;
+  text-align: center;
+  font: inherit;
+  background: #fffbe6;
+  border-radius: 3px;
+}
+
+.ticket-empty {
+  color: #666;
+  font-style: italic;
+  height: 2.2rem;
+}
+
+.ticket-comments {
+  margin-top: 0.7rem;
+}
+
+.ticket-comments textarea {
+  width: 100%;
+  font: inherit;
+  border: 0;
+  border-bottom: 1px solid #000;
+  border-radius: 0;
+  background: #fffbe6;
+  padding: 0.2rem;
+  resize: vertical;
+}
+
+.ticket-conditions {
+  font-size: 0.6rem;
+  line-height: 1.35;
+  margin: 0.7rem 0 0.9rem;
+  font-weight: 600;
+}
+
+.ticket-sign {
+  margin-top: 1.6rem;
+  max-width: 320px;
+}
+
+.ticket-sign-line {
+  border-bottom: 1px solid #000;
+  min-height: 1.9rem;
+  display: flex;
+  align-items: flex-end;
+}
+
+.ticket-signed {
+  font-family: 'Segoe Script', 'Bradley Hand', cursive;
+  font-size: 1.1rem;
+  padding-left: 0.4rem;
+}
+
+.ticket-foot {
+  margin-top: 1rem;
+  text-align: center;
+  font-size: 0.62rem;
+  font-weight: 700;
+}
+
+@media print {
+  /* Only the ticket goes on the page — no app chrome, no controls. */
+  .topbar,
+  .nav,
+  .no-print,
+  .spinner-wrap {
+    display: none !important;
+  }
+
+  html,
+  body,
+  .app,
+  main {
+    background: #fff !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  .ticket-sheet {
+    border: 0;
+    border-radius: 0;
+    padding: 0;
+    margin: 0;
+    font-size: 9pt;
+  }
+
+  /* The yellow tint marks fields that are editable on screen; on paper it just
+     looks like a smudge. */
+  .ticket-table .editable input,
+  .ticket-comments textarea {
+    background: transparent;
+  }
+
+  .ticket-table { page-break-inside: auto; }
+  .ticket-table tr { page-break-inside: avoid; }
+
+  @page {
+    size: letter portrait;
+    margin: 0.5in;
+  }
+}

@@ -10,6 +10,7 @@ import {
   collection,
   doc,
   getDoc,
+  runTransaction,
   serverTimestamp,
   setDoc,
   updateDoc,
@@ -20,7 +21,7 @@ import { auth, db, useEmulators } from '../firebase';
 import type { LocationFix } from './geolocation';
 import { describeDevice } from './device';
 import { distanceMeters } from './policy';
-import type { JobSite, Role, Shift } from './types';
+import type { DailyTicket, Equipment, JobSite, Role, Shift } from './types';
 
 /**
  * Every write the app makes.
@@ -108,6 +109,7 @@ export async function createWorker(input: {
   role: Role;
   jobSiteIds: string[];
   password: string;
+  hourlyRate?: number | null;
 }) {
   const email = input.email.trim().toLowerCase();
   const name = 'worker-provisioning';
@@ -144,6 +146,7 @@ export async function createWorker(input: {
       role: input.role,
       active: true,
       jobSiteIds: input.jobSiteIds,
+      hourlyRate: input.hourlyRate ?? null,
       mustChangePassword: true,
       createdAt: nowServer(),
       updatedAt: nowServer(),
@@ -158,7 +161,7 @@ export async function createWorker(input: {
 
 export async function updateWorker(
   uid: string,
-  patch: { displayName?: string; role?: Role; jobSiteIds?: string[] },
+  patch: { displayName?: string; role?: Role; jobSiteIds?: string[]; hourlyRate?: number | null },
 ) {
   await updateDoc(doc(db, 'users', uid), { ...patch, updatedAt: nowServer() });
   await audit('worker.update', { targetUserId: uid, ...patch });
@@ -213,6 +216,9 @@ export async function upsertJobSite(input: {
   lng: number;
   radiusMeters: number;
   active: boolean;
+  customer?: string;
+  jobNumber?: string;
+  equipmentIds?: string[];
 }) {
   const ref = input.id ? doc(db, 'jobSites', input.id) : doc(collection(db, 'jobSites'));
   await setDoc(
@@ -226,6 +232,9 @@ export async function upsertJobSite(input: {
       radiusMeters: Math.round(input.radiusMeters),
       metersPerDegLng: metersPerDegLng(input.lat),
       active: input.active,
+      customer: (input.customer ?? '').trim(),
+      jobNumber: (input.jobNumber ?? '').trim(),
+      equipmentIds: input.equipmentIds ?? [],
       updatedAt: nowServer(),
     },
     { merge: true },
@@ -240,6 +249,42 @@ export async function retireJobSite(id: string, name: string) {
 }
 
 // ---------------------------------------------------------------------------
+// Equipment
+// ---------------------------------------------------------------------------
+
+export async function upsertEquipment(input: {
+  id?: string;
+  type: string;
+  machineNo: string;
+  description?: string;
+  active: boolean;
+  hourlyRate?: number | null;
+}) {
+  const ref = input.id ? doc(db, 'equipment', input.id) : doc(collection(db, 'equipment'));
+  await setDoc(
+    ref,
+    {
+      id: ref.id,
+      type: input.type.trim(),
+      machineNo: input.machineNo.trim(),
+      description: (input.description ?? '').trim(),
+      active: input.active,
+      hourlyRate: input.hourlyRate ?? null,
+      updatedAt: nowServer(),
+    },
+    { merge: true },
+  );
+  await audit('equipment.upsert', { targetId: ref.id, type: input.type, machineNo: input.machineNo });
+  return ref.id;
+}
+
+/** Retired, never deleted — a ticket from last year still points at it. */
+export async function retireEquipment(id: string, label: string) {
+  await updateDoc(doc(db, 'equipment', id), { active: false, updatedAt: nowServer() });
+  await audit('equipment.retire', { targetId: id, label });
+}
+
+// ---------------------------------------------------------------------------
 // Clocking
 // ---------------------------------------------------------------------------
 
@@ -247,6 +292,10 @@ export interface PunchInput {
   site: JobSite;
   location: LocationFix | null;
   locationError: { code: number | null; message: string } | null;
+  /** The machine the operator is on, when the site has any assigned. */
+  equipment?: Equipment | null;
+  /** Hour-meter reading, read off the machine at clock-out. */
+  tractorHours?: number | null;
 }
 
 export interface PunchOutcome {
@@ -376,6 +425,10 @@ export async function clockIn(input: PunchInput) {
       pendingEdit: null,
       hasPendingEdit: false,
       lastEdit: null,
+      equipmentId: input.equipment?.id ?? null,
+      equipmentType: input.equipment?.type ?? null,
+      machineNo: input.equipment?.machineNo ?? null,
+      tractorHours: null,
       createdAt: nowServer(),
       updatedAt: nowServer(),
     });
@@ -416,6 +469,7 @@ export async function clockOut(shift: Shift, input: PunchInput) {
       status: 'closed',
       clockOut: punchRecord(input, outcome),
       clockOutAt: nowServer(),
+      ...(input.tractorHours != null ? { tractorHours: input.tractorHours } : {}),
       needsReview: flagged,
       // Union of both ends of the shift: a supervisor needs the whole story.
       flags: Array.from(new Set([...(shift.flags ?? []), ...outcome.flags])),
@@ -577,6 +631,71 @@ export async function forceCloseShift(shift: Shift, note: string) {
   batch.update(doc(db, 'userState', shift.userId), { openShiftId: null });
   await batch.commit();
   await audit('shift.auto_close', { targetId: shift.id, targetUserId: shift.userId, note });
+}
+
+// ---------------------------------------------------------------------------
+// Daily rental ticket
+// ---------------------------------------------------------------------------
+
+/**
+ * Saves the ticket, allocating its number the first time it is saved.
+ *
+ * The number has to be unique and has to increase, and there is no server to
+ * hand them out. A Firestore transaction does it instead: it reads the counter
+ * and writes the counter and the ticket together, so two supervisors saving two
+ * tickets at the same moment cannot come away with the same number — one
+ * transaction retries and takes the next one.
+ *
+ * The counter lives on the company record so the yard can set it to carry on
+ * from wherever their paper book left off.
+ */
+export async function saveDailyTicket(
+  ticket: Omit<DailyTicket, 'createdAt' | 'updatedAt'>,
+): Promise<number | null> {
+  const ticketRef = doc(db, 'dailyTickets', ticket.id);
+  const companyRef = doc(db, 'config', 'company');
+
+  const assigned = await runTransaction(db, async (tx) => {
+    const existing = await tx.get(ticketRef);
+    let number = ticket.ticketNumber ?? existing.data()?.ticketNumber ?? null;
+
+    if (number == null) {
+      const company = await tx.get(companyRef);
+      number = Number(company.data()?.nextTicketNumber ?? 1);
+      tx.update(companyRef, { nextTicketNumber: number + 1 });
+    }
+
+    tx.set(
+      ticketRef,
+      {
+        ...ticket,
+        ticketNumber: number,
+        ...(existing.exists() ? {} : { createdAt: nowServer() }),
+        updatedAt: nowServer(),
+      },
+      { merge: true },
+    );
+    return number;
+  });
+
+  await audit('ticket.save', { targetId: ticket.id, ticketNumber: assigned });
+  return assigned;
+}
+
+/** Records who signed the ticket off. The customer's copy needs a name on it. */
+export async function signDailyTicket(ticketId: string, supervisorName: string) {
+  await updateDoc(doc(db, 'dailyTickets', ticketId), {
+    supervisorName: supervisorName.trim(),
+    signedAt: nowServer(),
+    updatedAt: nowServer(),
+  });
+  await audit('ticket.sign', { targetId: ticketId, supervisorName });
+}
+
+/** Sets the number the next new ticket will take, to match the paper book. */
+export async function setNextTicketNumber(next: number) {
+  await updateDoc(doc(db, 'config', 'company'), { nextTicketNumber: Math.max(1, Math.round(next)) });
+  await audit('ticket.counter_set', { next });
 }
 
 // ---------------------------------------------------------------------------
