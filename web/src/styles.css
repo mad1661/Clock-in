@@ -339,6 +339,13 @@ a.small {
   text-decoration: none;
 }
 
+/* A link that is the main action of its row, e.g. "Open ticket". */
+a.small.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
 .icon-btn {
   min-height: 36px;
   min-width: 36px;
@@ -1028,4 +1035,24 @@ a.small {
     size: letter portrait;
     margin: 0.5in;
   }
+}
+
+/* The settled site/machine choice, shown as one line instead of two dropdowns.
+   Most operators are on the same job on the same machine every day and should
+   not have to scroll past two pickers to reach the button. */
+.chosen {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.6rem 0.8rem;
+  margin-bottom: 0.9rem;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  font-size: 0.95rem;
+}
+
+.chosen strong {
+  font-size: 1rem;
 }

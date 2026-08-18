@@ -1,4 +1,5 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { Link } from 'react-router-dom';
 import { collection, onSnapshot, orderBy, query } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { retireJobSite, upsertJobSite } from '../../lib/actions';
@@ -6,6 +7,7 @@ import { errorMessage } from '../../lib/errors';
 import { equipmentLabel } from '../../lib/types';
 import { acquireLocation } from '../../lib/geolocation';
 import { fmtDistance } from '../../lib/format';
+import { dayKey } from '../../lib/ticket';
 import { Banner, Card, EmptyState, Modal, Spinner } from '../../components/ui';
 import { geocode, type GeocodeHit } from '../../lib/basemap';
 import type { Equipment, JobSite } from '../../lib/types';
@@ -21,6 +23,7 @@ export default function JobSites() {
   const [editing, setEditing] = useState<JobSite | 'new' | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [machines, setMachines] = useState<Equipment[]>([]);
+  const today = dayKey(new Date());
 
   useEffect(() => {
     return onSnapshot(query(collection(db, 'equipment'), orderBy('type')), (snap) =>
@@ -80,14 +83,28 @@ export default function JobSites() {
                 <div className="row-meta">
                   <span>{site.address || 'No address'}</span>
                   <span>Boundary {fmtDistance(site.radiusMeters)}</span>
+                  {site.customer && <span>Customer {site.customer}</span>}
                   <span className="mono">
                     {site.lat.toFixed(5)}, {site.lng.toFixed(5)}
+                  </span>
+                </div>
+                <div className="row-meta">
+                  <span>
+                    {site.equipmentIds?.length
+                      ? machines
+                          .filter((m) => site.equipmentIds?.includes(m.id))
+                          .map((m) => equipmentLabel(m))
+                          .join(', ') || `${site.equipmentIds.length} machines`
+                      : 'No equipment assigned'}
                   </span>
                 </div>
                 <div className="row-actions">
                   <button type="button" className="small" onClick={() => setEditing(site)}>
                     Edit
                   </button>
+                  <Link className="small" to={`/admin/ticket?site=${site.id}&date=${today}`}>
+                    Today's ticket
+                  </Link>
                   <a
                     className="small"
                     href={`https://www.google.com/maps/search/?api=1&query=${site.lat},${site.lng}`}

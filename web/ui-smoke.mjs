@@ -122,7 +122,9 @@ async function openAdmin(page, label, path) {
   for (let attempt = 0; attempt < 3; attempt++) {
     await link.click();
     try {
-      await page.waitForURL(BASE + path, { timeout: 5000 });
+      // Pathname only: the ticket page keeps the site and date in the query
+      // string so a ticket can be linked to directly.
+      await page.waitForURL((url) => url.pathname === path, { timeout: 5000 });
       return;
     } catch {
       /* the post-setup redirect beat us to it; tap again */
@@ -143,7 +145,17 @@ async function punch(page, action) {
   await expectVisible(page, banner, `the "Clocked ${action}" confirmation`);
 }
 
+/**
+ * Chooses the job site, opening the pickers first if the clock screen has
+ * collapsed them into the one-line summary — which it does once there is
+ * nothing left to choose.
+ */
 async function selectSite(page, name) {
+  // Either the pickers or the collapsed summary means the screen is ready.
+  await page.locator('.chosen, #site').first().waitFor({ state: 'visible', timeout: 30000 });
+  const change = page.getByRole('button', { name: /^change$/i });
+  if (await change.isVisible().catch(() => false)) await change.click();
+  await page.locator('#site').waitFor({ state: 'visible', timeout: 15000 });
   const value = await page
     .locator('#site')
     .evaluate((el, n) => [...el.options].find((o) => o.text.includes(n))?.value, name);
@@ -244,25 +256,22 @@ console.log('\n=== Worker standing on site clocks in and out ===');
   const { ctx, page } = await newPage({ geo: SITE });
   await signIn(page, 'pat@example.com', workerPassword);
 
-  await page.waitForSelector('#site', { timeout: 30000 });
-  await selectSite(page, 'Harbour Works');
-
-  // The machine picker only appears when there is equipment to pick.
-  await expectVisible(page, page.locator('#machine'), 'the machine picker');
-  const machineValue = await page
-    .locator('#machine')
-    .evaluate((el) => [...el.options].find((o) => o.text.includes('D8T-2'))?.value);
-  if (!machineValue) throw new Error('D8T-2 was not offered to the operator');
-
-  // Assigned to them, so it should already be chosen — no tapping required.
-  const preselected = await page.locator('#machine').inputValue();
+  // One site, and a machine assigned to them, so there is nothing left to
+  // choose: the screen should show the choice back as a line, not two pickers.
+  const chosen = page.locator('.chosen');
+  await expectVisible(page, chosen, 'the settled site and machine');
+  const summary = await chosen.innerText();
   check(
     'their usual machine is picked for them',
-    preselected === machineValue,
-    `picker showed "${preselected}"`,
+    summary.includes('Harbour Works') && summary.includes('D8T-2'),
+    `line read "${summary.replace(/\n/g, ' ')}"`,
   );
-  await page.selectOption('#machine', machineValue);
   await shot(page, 'ui-4-clock.png', true);
+
+  // …and Change still opens the pickers for a day that is not typical.
+  await page.getByRole('button', { name: /^change$/i }).click();
+  await expectVisible(page, page.locator('#machine'), 'the machine picker after Change');
+  check('the choice can still be changed', true);
 
   await punch(page, 'in');
   check('clocked in', true);
@@ -287,7 +296,6 @@ console.log('\n=== Worker away from the site is recorded but flagged ===');
 {
   const { ctx, page } = await newPage({ geo: AWAY });
   await signIn(page, 'pat@example.com', workerPassword);
-  await page.waitForSelector('#site', { timeout: 30000 });
   await selectSite(page, 'Harbour Works');
 
   await page.waitForTimeout(RATE_LIMIT_MS);
@@ -309,7 +317,6 @@ console.log('\n=== Location switched off ===');
 {
   const { ctx, page } = await newPage({ permissions: [] });
   await signIn(page, 'pat@example.com', workerPassword);
-  await page.waitForSelector('#site', { timeout: 30000 });
   await selectSite(page, 'Harbour Works');
 
   await page.waitForTimeout(RATE_LIMIT_MS);

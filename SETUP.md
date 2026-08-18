@@ -71,6 +71,11 @@ claimed. Ask whoever set it up to create an account for you under **Workers**.
 
 ## 5. Add a job site and your crew
 
+Signed in as an administrator you land on **Home**, which lists whatever is still
+missing — crew, a job site, equipment — with a link to each. Work down it and the
+list disappears. After that Home shows who is on site, anything waiting on your
+approval, and today's tickets.
+
 **Job sites** → **+ Add site**. Search an address, tap the map, or stand on site
 and tap *use my current location*. Set the boundary radius — 100 m is a sensible
 default for a yard; make it big enough to cover where people actually park and

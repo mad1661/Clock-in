@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { collection, onSnapshot, orderBy, query, where } from 'firebase/firestore';
+import { Link } from 'react-router-dom';
 import { db } from '../../firebase';
 import { errorMessage } from '../../lib/errors';
 import { Banner, Card, EmptyState, FlagList, Modal, Spinner } from '../../components/ui';
@@ -7,6 +8,7 @@ import { ShiftDetail } from '../../components/ShiftDetail';
 import { elapsedSince, fmtDistance, fmtTime } from '../../lib/format';
 import { shortDeviceId } from '../../lib/device';
 import { withTimestamps } from '../../lib/snapshot';
+import { dayKey } from '../../lib/ticket';
 import type { JobSite, Shift } from '../../lib/types';
 
 /**
@@ -94,7 +96,15 @@ export default function OnSiteNow() {
       </Card>
 
       {bySite.map(([siteId, group]) => (
-        <Card key={siteId} title={`${group.name} — ${group.shifts.length}`}>
+        <Card
+          key={siteId}
+          title={`${group.name} — ${group.shifts.length}`}
+          actions={
+            <Link className="small" to={`/admin/ticket?site=${siteId}&date=${dayKey(new Date())}`}>
+              Today's ticket
+            </Link>
+          }
+        >
           <ul className="list">
             {group.shifts.map((shift) => {
               const longRun = now - shift.clockInAt.toMillis() > 10 * 3600 * 1000;

@@ -11,6 +11,7 @@ import JobSites from './pages/admin/JobSites';
 import Timesheets from './pages/admin/Timesheets';
 import ReviewQueue from './pages/admin/ReviewQueue';
 import OnSiteNow from './pages/admin/OnSiteNow';
+import Home from './pages/admin/Home';
 import Equipment from './pages/admin/Equipment';
 import DailyTicket from './pages/admin/DailyTicket';
 
@@ -34,9 +35,18 @@ function Shell({ children }: { children: React.ReactNode }) {
       </header>
 
       <nav className="nav" aria-label="Sections">
-        <NavLink to="/" end>
-          Clock
-        </NavLink>
+        {isAdmin ? (
+          <>
+            <NavLink to="/" end>
+              Home
+            </NavLink>
+            <NavLink to="/clock">Clock</NavLink>
+          </>
+        ) : (
+          <NavLink to="/" end>
+            Clock
+          </NavLink>
+        )}
         <NavLink to="/timesheet">My hours</NavLink>
         {isAdmin && <NavLink to="/admin/on-site">On site</NavLink>}
         {isAdmin && <NavLink to="/admin/review">Review</NavLink>}
@@ -66,7 +76,7 @@ function RequireAdmin({ children }: { children: React.ReactNode }) {
 }
 
 export function App() {
-  const { user, profile, missingProfile, profileError, loading } = useAuth();
+  const { user, profile, missingProfile, profileError, loading, isAdmin } = useAuth();
   const location = useLocation();
 
   if (loading) {
@@ -136,7 +146,10 @@ export function App() {
   return (
     <Shell>
       <Routes>
-        <Route path="/" element={<ClockPage />} />
+        {/* Supervisors land somewhere useful; workers land on the one button
+            they came for. Both can still reach the other. */}
+        <Route path="/" element={isAdmin ? <Home /> : <ClockPage />} />
+        <Route path="/clock" element={<ClockPage />} />
         <Route path="/timesheet" element={<MyTimesheet />} />
         <Route path="/account" element={<Account />} />
         <Route

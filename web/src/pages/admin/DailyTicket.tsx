@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { collection, doc, getDoc, getDocs, query, where } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { useAuth } from '../../auth/AuthProvider';
@@ -111,9 +112,11 @@ function RentalTotals({
  */
 export default function DailyTicket() {
   const { profile } = useAuth();
+  // Deep-linkable, so "Open ticket" from the home page lands on the right one.
+  const [params, setParams] = useSearchParams();
   const [sites, setSites] = useState<JobSite[] | null>(null);
-  const [siteId, setSiteId] = useState('');
-  const [date, setDate] = useState(() => dayKey(new Date()));
+  const [siteId, setSiteId] = useState(params.get('site') ?? '');
+  const [date, setDate] = useState(() => params.get('date') ?? dayKey(new Date()));
 
   const [ticket, setTicket] = useState<Omit<Ticket, 'createdAt' | 'updatedAt'> | null>(null);
   const [loading, setLoading] = useState(false);
@@ -128,13 +131,21 @@ export default function DailyTicket() {
       const all = snap.docs.map((d) => ({ ...(d.data() as JobSite), id: d.id }));
       all.sort((a, b) => a.name.localeCompare(b.name));
       setSites(all);
-      if (all.length && !siteId) setSiteId(all.find((s) => s.active)?.id ?? all[0].id);
+      if (all.length && !all.some((s) => s.id === siteId)) {
+        setSiteId(all.find((s) => s.active)?.id ?? all[0].id);
+      }
     })().catch((err) => setError(errorMessage(err)));
     // Sites are picked once; a live subscription would fight the picker.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const site = useMemo(() => sites?.find((s) => s.id === siteId) ?? null, [sites, siteId]);
+
+  // Keep the address bar in step, so the page can be bookmarked or sent on.
+  useEffect(() => {
+    if (!siteId) return;
+    setParams({ site: siteId, date }, { replace: true });
+  }, [siteId, date, setParams]);
 
   const load = useCallback(async () => {
     if (!site) return;

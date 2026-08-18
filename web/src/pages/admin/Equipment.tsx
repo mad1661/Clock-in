@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { collection, onSnapshot, orderBy, query } from 'firebase/firestore';
+import { Link } from 'react-router-dom';
 import { db } from '../../firebase';
 import { retireEquipment, upsertEquipment } from '../../lib/actions';
 import { errorMessage } from '../../lib/errors';
 import { Banner, Card, EmptyState, Modal, Spinner } from '../../components/ui';
-import { equipmentLabel, type Equipment as Machine } from '../../lib/types';
+import { equipmentLabel, type Equipment as Machine, type JobSite } from '../../lib/types';
 
 /**
  * The yard's machine list.
@@ -18,6 +19,7 @@ export default function Equipment() {
   const [editing, setEditing] = useState<Machine | 'new' | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showRetired, setShowRetired] = useState(false);
+  const [sites, setSites] = useState<JobSite[]>([]);
 
   useEffect(() => {
     return onSnapshot(
@@ -27,6 +29,12 @@ export default function Equipment() {
         setMachines([]);
         setError(errorMessage(err));
       },
+    );
+  }, []);
+
+  useEffect(() => {
+    return onSnapshot(query(collection(db, 'jobSites')), (snap) =>
+      setSites(snap.docs.map((d) => ({ ...(d.data() as JobSite), id: d.id }))),
     );
   }, []);
 
@@ -82,11 +90,24 @@ export default function Equipment() {
                   <span>
                     {machine.hourlyRate == null ? 'No rate set' : `$${machine.hourlyRate}/hr`}
                   </span>
+                  {/* Where this machine is expected to be, so the yard can see
+                      at a glance what is out and what is sitting idle. */}
+                  <span>
+                    {(() => {
+                      const on = sites.filter(
+                        (s) => s.active && s.equipmentIds?.includes(machine.id),
+                      );
+                      return on.length ? `On ${on.map((s) => s.name).join(', ')}` : 'Not on a job';
+                    })()}
+                  </span>
                 </div>
                 <div className="row-actions">
                   <button type="button" className="small" onClick={() => setEditing(machine)}>
                     Edit
                   </button>
+                  <Link className="small" to="/admin/sites">
+                    Assign to a job
+                  </Link>
                   {machine.active && (
                     <button
                       type="button"

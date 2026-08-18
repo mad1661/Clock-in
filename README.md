@@ -51,6 +51,9 @@ Once deployed, the app lives at **https://clockit-bc990.web.app**.
 
 **For administrators**
 
+- A **home screen** that answers the three questions the app gets opened for:
+  who is on site, what is waiting for approval, and where today's tickets are.
+  On a new company it also lists what still has to be set up.
 - Create worker logins. A one-time password is generated and shown once.
 - Email password resets, deactivate people, promote to administrator.
 - Define job sites on Esri satellite imagery: search an address, tap the map, or
@@ -66,7 +69,8 @@ Once deployed, the app lives at **https://clockit-bc990.web.app**.
   beside the proposed ones. Approve and the times apply; turn it down with a note
   the worker sees on their timesheet.
 - See which handset each punch was made on.
-- A live **On site** board: who is clocked in, at which site, for how long.
+- A live **On site** board: who is clocked in, at which site, for how long —
+  with a link straight to that site's ticket for today.
 - Keep the yard's **equipment list**, assign machines to a job — before it starts
   or after it has finished — and set each machine's rental rate.
 - Assign each operator their usual machine, so it is already chosen when they

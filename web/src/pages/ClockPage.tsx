@@ -45,6 +45,7 @@ export default function ClockPage() {
   const [machines, setMachines] = useState<Equipment[]>([]);
   const [selectedEquipmentId, setSelectedEquipmentId] = useState('');
   const [tractorHours, setTractorHours] = useState('');
+  const [showPickers, setShowPickers] = useState(false);
 
   const [phase, setPhase] = useState<Phase>('idle');
   const [fix, setFix] = useState<LocationFix | null>(null);
@@ -193,6 +194,11 @@ export default function ClockPage() {
 
   const busy = phase === 'locating' || phase === 'submitting';
 
+  // True once nothing is left to pick: a site is chosen, and either there are no
+  // machines on it or one is already selected.
+  const settled =
+    Boolean(selectedSiteId) && (siteMachines.length === 0 || Boolean(selectedEquipmentId));
+
   // --- The one action -----------------------------------------------------
 
   const punch = useCallback(async () => {
@@ -316,52 +322,70 @@ export default function ClockPage() {
                   placeholder="Reading on the machine"
                   disabled={busy}
                 />
-                <p className="hint">
-                  Read it off {equipmentLabel(openShiftMachine ?? { type: 'the machine' })} before
-                  you climb down. Leave it blank if you cannot — your supervisor can fill it in.
-                </p>
+                <p className="hint">Leave it blank if you cannot read it.</p>
               </div>
             )}
           </>
+        ) : settled && !showPickers ? (
+          // Same site, same machine, every morning. Showing that back as one
+          // line — with a way to change it — beats two dropdowns to scroll past
+          // on the way to the only button that matters.
+          <div className="chosen">
+            <div>
+              <strong>{activeSite?.name}</strong>
+              {selectedMachine && <span> · {equipmentLabel(selectedMachine)}</span>}
+              {!selectedMachine && siteMachines.length > 0 && <span> · no machine</span>}
+            </div>
+            <button
+              type="button"
+              className="small"
+              disabled={busy}
+              onClick={() => setShowPickers(true)}
+            >
+              Change
+            </button>
+          </div>
         ) : (
-          <div className="field">
-            <label htmlFor="site">Job site</label>
-            <select
-              id="site"
-              value={selectedSiteId}
-              onChange={(e) => setSelectedSiteId(e.target.value)}
-              disabled={busy}
-            >
-              <option value="">Choose a site…</option>
-              {sites.map((site) => (
-                <option key={site.id} value={site.id}>
-                  {site.name}
-                  {site.address ? ` — ${site.address}` : ''}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
+          <>
+            <div className="field">
+              <label htmlFor="site">Job site</label>
+              <select
+                id="site"
+                value={selectedSiteId}
+                onChange={(e) => setSelectedSiteId(e.target.value)}
+                disabled={busy}
+              >
+                <option value="">Choose a site…</option>
+                {sites.map((site) => (
+                  <option key={site.id} value={site.id}>
+                    {site.name}
+                    {site.address ? ` — ${site.address}` : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
 
-        {!isClockedIn && siteMachines.length > 0 && (
-          <div className="field">
-            <label htmlFor="machine">Machine</label>
-            <select
-              id="machine"
-              value={selectedEquipmentId}
-              onChange={(e) => setSelectedEquipmentId(e.target.value)}
-              disabled={busy}
-            >
-              <option value="">Not on a machine</option>
-              {siteMachines.map((machine) => (
-                <option key={machine.id} value={machine.id}>
-                  {equipmentLabel(machine)}
-                  {machine.description ? ` — ${machine.description}` : ''}
-                </option>
-              ))}
-            </select>
-            <p className="hint">This is what puts you on the customer's rental ticket.</p>
-          </div>
+            {siteMachines.length > 0 && (
+              <div className="field">
+                <label htmlFor="machine">Machine</label>
+                <select
+                  id="machine"
+                  value={selectedEquipmentId}
+                  onChange={(e) => setSelectedEquipmentId(e.target.value)}
+                  disabled={busy}
+                >
+                  <option value="">Not on a machine</option>
+                  {siteMachines.map((machine) => (
+                    <option key={machine.id} value={machine.id}>
+                      {equipmentLabel(machine)}
+                      {machine.description ? ` — ${machine.description}` : ''}
+                    </option>
+                  ))}
+                </select>
+                <p className="hint">This is what puts you on the customer's rental ticket.</p>
+              </div>
+            )}
+          </>
         )}
 
         {phase === 'locating' && (
@@ -396,6 +420,14 @@ export default function ClockPage() {
             <Banner kind="error">{error}</Banner>
           </div>
         )}
+
+        {!isClockedIn && activeSite && (
+          <p className="hint" style={{ textAlign: 'center', marginBottom: 0 }}>
+            {activeSite.address || 'No address on file'} · boundary{' '}
+            {fmtDistance(activeSite.radiusMeters)}
+            {liveDistance != null && ` · you are ${fmtDistance(liveDistance)} away`}
+          </p>
+        )}
       </Card>
 
       {failure && !busy && !result && (
@@ -418,15 +450,7 @@ export default function ClockPage() {
         </Card>
       )}
 
-      {!isClockedIn && activeSite && (
-        <Card title="About this site">
-          <div className="row-meta">
-            <span>{activeSite.address || 'No address on file'}</span>
-            <span>Boundary: {fmtDistance(activeSite.radiusMeters)}</span>
-            {liveDistance != null && <span>You are {fmtDistance(liveDistance)} away</span>}
-          </div>
-        </Card>
-      )}
+
     </>
   );
 }
