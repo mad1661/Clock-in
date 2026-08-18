@@ -234,19 +234,40 @@ export default function DailyTicket() {
   /**
    * Opens the print dialog, having first shown that something is happening.
    *
-   * `window.print()` blocks while the browser lays the page out, and on a big
-   * ticket that is a second or two of a screen that looks frozen. React has to
-   * paint the busy state before the call, which takes two frames — one to
-   * commit, one to put it on the glass.
+   * `window.print()` blocks while the browser lays the page out, and on a full
+   * ticket that is a second or more of a screen that looks frozen. Two things
+   * are needed to make that visible. React has to paint before the call, which
+   * takes two frames — one to commit the state, one to put it on the glass; a
+   * single frame commits but never reaches the screen. And the indicator has to
+   * be an overlay rather than a change of button label, because by the time
+   * somebody has filled in the hour meters they have scrolled the toolbar off
+   * the top of the page and would never see it.
+   *
+   * Cleared on whichever comes first: `afterprint`, or the call returning.
+   * Browsers differ over whether print() blocks until the dialog closes, and a
+   * spinner nobody can dismiss is worse than the problem it was solving.
    */
   function printTicket() {
     setPrinting(true);
+
+    let finished = false;
+    const done = () => {
+      if (finished) return;
+      finished = true;
+      window.removeEventListener('afterprint', done);
+      window.clearTimeout(guard);
+      setPrinting(false);
+    };
+    // Last resort, for a browser that neither blocks nor fires afterprint.
+    const guard = window.setTimeout(done, 30000);
+    window.addEventListener('afterprint', done);
+
     requestAnimationFrame(() =>
       requestAnimationFrame(() => {
         try {
           window.print();
         } finally {
-          setPrinting(false);
+          done();
         }
       }),
     );
@@ -281,6 +302,17 @@ export default function DailyTicket() {
 
   return (
     <>
+      {printing && (
+        <div className="print-overlay no-print" role="status" aria-live="polite">
+          <div className="print-overlay-card">
+            <Spinner label="Preparing the ticket…" />
+            <p className="hint" style={{ marginBottom: 0 }}>
+              Your browser is laying out the page. The print dialog will open in a moment.
+            </p>
+          </div>
+        </div>
+      )}
+
       <Card title="Daily rental ticket" className="no-print">
         {error && <Banner kind="error">{error}</Banner>}
         {saved && <Banner kind="success">Saved.</Banner>}

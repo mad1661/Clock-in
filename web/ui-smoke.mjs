@@ -387,6 +387,28 @@ console.log('\n=== The daily rental ticket ===');
   check('ticket number allocated', /^\d+$/.test(number.trim()), `got "${number}"`);
   await shot(page, 'ui-10-ticket.png', true);
 
+  // The bug this guards: window.print() blocks, so a busy state set immediately
+  // before it is committed but never painted, and the screen just freezes. Stub
+  // print and record whether the overlay had made it onto the page by the time
+  // the browser would have stopped repainting.
+  await page.evaluate(() => {
+    window.__printed = false;
+    window.__overlayAtPrint = false;
+    window.print = () => {
+      window.__printed = true;
+      window.__overlayAtPrint = Boolean(document.querySelector('.print-overlay'));
+    };
+  });
+  await page.getByRole('button', { name: /print \/ pdf/i }).click();
+  await page.waitForFunction(() => window.__printed === true, { timeout: 15000 });
+  check(
+    'the "preparing" overlay is up before the browser blocks',
+    await page.evaluate(() => window.__overlayAtPrint),
+  );
+  // …and it goes away again rather than trapping the page behind a spinner.
+  await page.waitForFunction(() => !document.querySelector('.print-overlay'), { timeout: 15000 });
+  check('the overlay clears afterwards', true);
+
   // --- 9. The supervisor signs it ---
   console.log('\n=== Supervisor signs the ticket ===');
   await page.getByRole('button', { name: /tap to sign|sign off/i }).first().click();

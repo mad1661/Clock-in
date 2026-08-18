@@ -1129,3 +1129,24 @@ a.small.primary {
   height: 56px;
   margin-bottom: 0.5rem;
 }
+
+/* Shown while the browser lays out the printed page. A button label was too
+   easy to miss once the toolbar had been scrolled off the top. */
+.print-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  background: rgba(12, 20, 34, 0.55);
+  backdrop-filter: blur(2px);
+}
+
+.print-overlay-card {
+  background: var(--surface);
+  border-radius: 14px;
+  padding: 1.4rem 1.6rem;
+  max-width: 320px;
+  text-align: center;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.3);
+}
