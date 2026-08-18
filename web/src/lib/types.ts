@@ -105,7 +105,8 @@ export interface EditOutcome {
 
 export interface PunchRecord {
   at: Timestamp;
-  method: 'gps' | 'photo' | 'unverified';
+  /** 'manual' is a time an owner wrote in, for a punch nobody ever made. */
+  method: 'gps' | 'photo' | 'unverified' | 'manual';
   jobSiteId: string;
   jobSiteName: string;
   location: { lat: number; lng: number; accuracy: number; capturedAt: Timestamp } | null;
@@ -153,6 +154,11 @@ export interface Shift {
   machineNo?: string | null;
   /** Hour-meter reading for the machine, entered by the operator on clock-out. */
   tractorHours?: number | null;
+  /**
+   * Set on the extra days split out of a shift somebody left open for days.
+   * Names the shift they were split out of, which is what the rules check.
+   */
+  fromShiftId?: string | null;
 }
 
 /** One printed line of the daily rental ticket: one operator on one machine. */

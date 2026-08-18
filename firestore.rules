@@ -414,6 +414,42 @@ service cloud.firestore {
         && getAfter(/databases/$(database)/documents/userState/$(request.auth.uid))
              .data.openShiftId == null;
 
+      // An owner writing in one day of a forgotten shift.
+      //
+      // Somebody on the clock for three days did not work seventy-two hours —
+      // they went home and came back. One shift spanning the lot is wrong three
+      // ways over: the timesheet credits it all to the first day, daily overtime
+      // reads it as a seventy-two hour day, and the customer's rental ticket for
+      // the other two days shows nobody on site. So each day is written
+      // separately, closed, and marked as entered by hand.
+      //
+      // Tied to the shift being closed in the same batch, and to the same
+      // worker, so this is the forgotten-clock-out repair and not a general
+      // power to invent history.
+      allow create: if isOwner()
+        && request.resource.data.userId is string
+        && request.resource.data.fromShiftId is string
+        // Not itself: a document naming itself would satisfy the two checks at
+        // the bottom trivially, which would turn this into a free hand to write
+        // any shift for anybody rather than the repair of a specific one.
+        && request.resource.data.fromShiftId != shiftId
+        && request.resource.data.status == 'closed'
+        && request.resource.data.clockInAt is timestamp
+        && request.resource.data.clockOutAt is timestamp
+        && request.resource.data.clockInAt <= request.resource.data.clockOutAt
+        && request.resource.data.clockOutAt <= request.time
+        && request.resource.data.clockIn.method == 'manual'
+        && request.resource.data.clockIn.location == null
+        && request.resource.data.flags.hasAll(['MANUAL_ENTRY'])
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time
+        && getAfter(/databases/$(database)/documents/shifts/$(request.resource.data.fromShiftId))
+             .data.userId == request.resource.data.userId
+        && getAfter(/databases/$(database)/documents/shifts/$(request.resource.data.fromShiftId))
+             .data.status == 'closed'
+        && getAfter(/databases/$(database)/documents/shifts/$(request.resource.data.fromShiftId))
+             .data.flags.hasAny(['FORCE_CLOSED']);
+
       // A worker asking for a correction. This only ever records the request —
       // the hours do not move until a supervisor approves, which is the whole
       // point of the feature.

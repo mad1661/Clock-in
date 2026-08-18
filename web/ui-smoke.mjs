@@ -262,6 +262,14 @@ let workerPassword;
   // --- 3b. Ownership ---
   console.log('\n=== Ownership ===');
   await openAdmin(page, /^workers$/i, '/admin/workers');
+  // Wait for the roster to actually have the boss on it. Reading .list the
+  // instant the page mounts can catch the list mid-render with only the rows
+  // that happened to arrive first.
+  await expectVisible(
+    page,
+    page.locator('.row').filter({ hasText: 'The Boss' }),
+    'the owner on the roster',
+  );
   const roster = await page.locator('.list').innerText();
   check('the owner is marked as such', roster.includes('Owner'), roster.replace(/\n/g, ' | ').slice(0, 160));
   // Pat is a worker, not a supervisor, so ownership is not offered for them.
@@ -288,7 +296,9 @@ let workerPassword;
   page.on('dialog', (d) => void d.accept());
   const danaRow = page.locator('.row').filter({ hasText: 'Dana Reid' });
   await expectVisible(page, danaRow, 'Dana on the roster');
-  await danaRow.getByRole('button', { name: /make owner/i }).click();
+  const makeOwner = danaRow.getByRole('button', { name: /make owner/i });
+  await expectVisible(page, makeOwner, 'the Make owner button on Dana’s row');
+  await makeOwner.click();
   await expectVisible(
     page,
     danaRow.getByRole('button', { name: /remove as owner/i }),
@@ -454,6 +464,31 @@ console.log('\n=== The daily rental ticket ===');
 
   const number = await page.locator('.ticket-no').innerText();
   check('ticket number allocated', /^\d+$/.test(number.trim()), `got "${number}"`);
+
+  // --- 8b. What the yard sees, and the customer does not ---
+  const office = page.locator('.no-print').filter({ hasText: /office copy/i });
+  await expectVisible(page, office, 'the office copy totals');
+  const totals = await office.innerText();
+  check(
+    'the operator’s wage is on the office copy',
+    totals.includes('$38.50/hr') && /Labour/.test(totals),
+    totals.replace(/\n/g, ' | ').slice(0, 220),
+  );
+  check(
+    'and so is what the day made over labour',
+    /Over labour/.test(totals),
+    totals.replace(/\n/g, ' | ').slice(0, 220),
+  );
+  // The customer's copy is the printed one, and wages are not on it. Leaf
+  // elements only: every ancestor of the office-copy card carries its text too,
+  // so counting those would report a leak on any page that has the card at all.
+  const leaked = await page.evaluate(() =>
+    [...document.querySelectorAll('body *')]
+      .filter((el) => el.children.length === 0 && !el.closest('.no-print'))
+      .map((el) => el.textContent ?? '')
+      .filter((text) => text.includes('38.50') || /labour/i.test(text)),
+  );
+  check('wages are kept off the printed ticket', leaked.length === 0, leaked.join(' | ').slice(0, 160));
   await shot(page, 'ui-10-ticket.png', true);
 
   // The bug this guards: window.print() blocks, so a busy state set immediately
@@ -597,6 +632,10 @@ console.log('\n=== Site hours ===');
   await page.fill('#s-end', hhmm(3));
   await page.getByRole('dialog').getByRole('button', { name: /save changes/i }).click();
   await expectVisible(page, page.getByText(/Hours \d/), 'the hours on the site row');
+  // The row above can be satisfied by the local write before the server has
+  // taken it. Closing the tab at that moment discards it, and the next section
+  // signs in to a site with no hours on it — so wait for the write to land.
+  await page.waitForTimeout(2000);
   check('a job site can be given the hours it runs', true);
   await ctx.close();
 }

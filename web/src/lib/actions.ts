@@ -730,6 +730,32 @@ export function shiftIsStuck(shift: Shift, now: Date = new Date()): boolean {
   return now.getTime() - started.getTime() >= STUCK_SHIFT_HOURS * 3600_000;
 }
 
+/** One day of a forgotten shift, as somebody remembers it. */
+export interface WorkedDay {
+  start: Date;
+  end: Date;
+}
+
+/** The punch record for a time nobody actually punched. */
+function manualPunch(shift: Shift, at: Date) {
+  return {
+    at,
+    method: 'manual',
+    jobSiteId: shift.jobSiteId,
+    jobSiteName: shift.jobSiteName,
+    location: null,
+    locationError: null,
+    site: null,
+    distanceMeters: null,
+    withinGeofence: false,
+    flags: ['MANUAL_ENTRY'],
+    photoPath: null,
+    device: null,
+    note: 'Entered by an owner — never punched',
+    offline: null,
+  };
+}
+
 /**
  * Ends a shift that has been left open for more than a day.
  *
@@ -737,53 +763,115 @@ export function shiftIsStuck(shift: Shift, now: Date = new Date()): boolean {
  * so an owner closes them by hand from the On site tab. The rules only accept
  * this from an owner and only past {@link STUCK_SHIFT_HOURS}.
  *
- * `endedAt` is when the worker actually stopped, as best anybody knows. It
- * matters that this is asked for rather than assumed: hours worked have to be
- * recorded and paid whether or not somebody remembered to press a button, so
- * closing a shift at a guessed-low time is not a neutral act. Leaving it out is
- * allowed, but records no hours at all and leaves the shift sitting in the
- * review queue, unpaid, until somebody enters the real ones.
+ * `firstDayEnd` and `extraDays` are when the worker actually worked, as best
+ * anybody knows. It matters that this is asked for rather than assumed: hours
+ * worked have to be recorded and paid whether or not somebody remembered to
+ * press a button, so closing a shift at a guessed-low time is not a neutral act.
+ * Knowing nothing is allowed, records no hours at all, and leaves the shift
+ * sitting in the review queue, unpaid, until somebody enters the real ones.
+ *
+ * A shift left open across several days becomes one closed shift per day rather
+ * than one enormous one. Somebody on the clock since Monday did not work
+ * seventy-two hours — they went home each night — and a single record spanning
+ * the lot lands every hour on Monday, reads as a seventy-two hour day to the
+ * overtime split, and leaves Tuesday's and Wednesday's rental tickets showing
+ * nobody on site.
  */
 export async function forceCloseShift(
   shift: Shift,
-  { endedAt, note }: { endedAt: Date | null; note: string },
+  {
+    firstDayEnd,
+    extraDays = [],
+    note,
+  }: { firstDayEnd: Date | null; extraDays?: WorkedDay[]; note: string },
 ) {
   const started = shift.clockInAt.toDate();
-  if (endedAt && endedAt.getTime() < started.getTime()) {
-    throw new Error('That is before they clocked in.');
+  const rest = [...extraDays].sort((a, b) => a.start.getTime() - b.start.getTime());
+
+  // The shift already carries a real, punched clock-in, so the day it was made
+  // on is closed on the shift itself and only ever needs a finish time. The
+  // later days never happened as far as the clock is concerned and are written
+  // out in full.
+  if (firstDayEnd) {
+    if (firstDayEnd.getTime() < started.getTime()) throw new Error('That is before they clocked in.');
+    if (firstDayEnd.getTime() > Date.now()) throw new Error('That is in the future.');
   }
-  if (endedAt && endedAt.getTime() > Date.now()) {
-    throw new Error('That is in the future.');
+  for (const day of rest) {
+    if (day.end.getTime() < day.start.getTime()) throw new Error('A day cannot end before it starts.');
+    if (day.end.getTime() > Date.now()) throw new Error('That is in the future.');
+    if (day.start.getTime() < started.getTime()) throw new Error('That is before they clocked in.');
   }
+
   const uid = auth.currentUser?.uid ?? null;
-  const minutes = endedAt
-    ? Math.round((endedAt.getTime() - started.getTime()) / 60000)
-    : 0;
+  const first = firstDayEnd ? { start: started, end: firstDayEnd } : null;
+  const minutes = first ? Math.round((first.end.getTime() - started.getTime()) / 60000) : 0;
 
   const batch = writeBatch(db);
   batch.update(doc(db, 'shifts', shift.id), {
     status: 'closed',
-    clockOutAt: endedAt ?? shift.clockInAt,
+    clockOut: first ? manualPunch(shift, first.end) : null,
+    clockOutAt: first ? first.end : shift.clockInAt,
     durationMinutes: minutes,
     flags: Array.from(
-      new Set([...(shift.flags ?? []), 'FORCE_CLOSED', ...(endedAt ? ['MANUAL_ENTRY'] : [])]),
+      new Set([...(shift.flags ?? []), 'FORCE_CLOSED', ...(first ? ['MANUAL_ENTRY'] : [])]),
     ),
-    // An owner who supplied the finish time has ruled on it. One who did not
-    // has not, and the shift stays in the queue rather than quietly reading as
-    // a settled day with no hours in it.
-    needsReview: !endedAt,
-    review: endedAt
+    // An owner who supplied the hours has ruled on them. One who did not has
+    // not, and the shift stays in the queue rather than quietly reading as a
+    // settled day with no hours in it.
+    needsReview: !first,
+    review: first
       ? { status: 'approved', by: uid, at: nowServer(), note: note.trim() || null }
       : { status: 'pending', by: null, at: null, note: note.trim() || null },
     updatedAt: nowServer(),
   });
+
+  for (const day of rest) {
+    const ref = doc(collection(db, 'shifts'));
+    batch.set(ref, {
+      id: ref.id,
+      // Names the shift this was split out of, which is also what the rules
+      // check: this write is the repair of that shift, not a free hand to
+      // invent history.
+      fromShiftId: shift.id,
+      userId: shift.userId,
+      userDisplayName: shift.userDisplayName,
+      userEmail: shift.userEmail,
+      jobSiteId: shift.jobSiteId,
+      jobSiteName: shift.jobSiteName,
+      status: 'closed',
+      clockIn: manualPunch(shift, day.start),
+      clockOut: manualPunch(shift, day.end),
+      clockInAt: day.start,
+      clockOutAt: day.end,
+      durationMinutes: Math.round((day.end.getTime() - day.start.getTime()) / 60000),
+      needsReview: false,
+      flags: ['MANUAL_ENTRY', 'FORCE_CLOSED'],
+      review: { status: 'approved', by: uid, at: nowServer(), note: note.trim() || null },
+      pendingEdit: null,
+      hasPendingEdit: false,
+      lastEdit: null,
+      equipmentId: shift.equipmentId ?? null,
+      equipmentType: shift.equipmentType ?? null,
+      machineNo: shift.machineNo ?? null,
+      tractorHours: null,
+      createdAt: nowServer(),
+      updatedAt: nowServer(),
+    });
+  }
+
   batch.update(doc(db, 'userState', shift.userId), { openShiftId: null });
   await batch.commit();
+
+  const totalMinutes =
+    minutes +
+    rest.reduce((sum, day) => sum + Math.round((day.end.getTime() - day.start.getTime()) / 60000), 0);
+  const lastEnd = rest.length ? rest[rest.length - 1].end : (first?.end ?? null);
   await audit('shift.auto_close', {
     targetId: shift.id,
     targetUserId: shift.userId,
     worker: shift.userDisplayName,
     note,
+    days: (first ? 1 : 0) + rest.length,
     from: {
       clockInAt: started.toISOString(),
       clockOutAt: null,
@@ -791,8 +879,8 @@ export async function forceCloseShift(
     },
     to: {
       clockInAt: started.toISOString(),
-      clockOutAt: endedAt?.toISOString() ?? null,
-      minutes: endedAt ? minutes : null,
+      clockOutAt: lastEnd?.toISOString() ?? null,
+      minutes: totalMinutes || null,
     },
   });
 }

@@ -119,6 +119,13 @@ Review until somebody enters the real ones. It is deliberately not offered
 sooner: a shift shorter than a day belongs to somebody who may well still be
 working.
 
+If they have been on the clock for **several days**, you get a line per day —
+start and finish — prefilled from the site's hours if it has them. Leave a day
+blank if they did not work it. Each day is saved as its own shift, so the
+timesheet, the overtime split and each day's rental ticket all come out right.
+Their real clock-in on the first day cannot be moved; correct it afterwards on
+**Timesheets** if it is wrong.
+
 **Activity** lists every change anyone has made, newest first, searchable and
 exportable as CSV. Changes to somebody's hours show what the times were before
 and after. Nothing in that list can be edited or deleted by anybody.
@@ -153,6 +160,16 @@ appears once they clock out. Anyone still on the clock is shown with a blank
 finish and their hours marked `*`, so nobody is missing from the customer's copy
 just because they forgot to clock out. **Rebuild from timesheet** picks up
 anything that has changed since.
+
+**What the day cost and what it made.** Below the sheet, **Rental total (office
+copy)** prices each line: machine hours at the machine's rental rate, and
+alongside it the operator's hours at their hourly wage, with a labour total and
+what the day made over labour. Wages come from **Workers**, rental rates from
+**Equipment**; anything missing is named so you know what to go and set.
+
+That block is the office copy and it does **not** print. The paper form the
+customer has always been handed is a record of hours, and putting your crew's
+pay on it would hand your labour costs to the customer along with it.
 
 **Signing.** Tap the signature line at the bottom of the sheet (or **Sign off**)
 and sign with a finger or a stylus. Your name and the time are recorded with it,

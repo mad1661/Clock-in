@@ -491,8 +491,11 @@ async function stuckShift(uid, hoursAgo) {
   });
 }
 
-/** Close it the way the app does: the shift and the clock-state in one batch. */
-function endShift(db, uid) {
+/**
+ * Close it the way the app does: the shift and the clock-state in one batch,
+ * plus one extra closed shift per further day the worker was left on the clock.
+ */
+function endShift(db, uid, extraDays = []) {
   const batch = writeBatch(db);
   batch.update(doc(db, 'shifts', 'stuck'), {
     status: 'closed',
@@ -503,8 +506,45 @@ function endShift(db, uid) {
     review: { status: 'pending', by: null, at: null, note: null },
     updatedAt: serverTimestamp(),
   });
+  extraDays.forEach((day, i) => {
+    batch.set(doc(db, 'shifts', `split${i}`), {
+      id: `split${i}`,
+      fromShiftId: 'stuck',
+      userId: uid,
+      userDisplayName: 'Test',
+      userEmail: 'test@example.com',
+      jobSiteId: SITE.id,
+      jobSiteName: SITE.name,
+      status: 'closed',
+      clockIn: { ...punch(), method: 'manual', location: null },
+      clockOut: { ...punch(), method: 'manual', location: null },
+      clockInAt: day.start,
+      clockOutAt: day.end,
+      durationMinutes: 480,
+      needsReview: false,
+      flags: ['MANUAL_ENTRY', 'FORCE_CLOSED'],
+      review: { status: 'approved', by: 'boss', at: serverTimestamp(), note: null },
+      pendingEdit: null,
+      hasPendingEdit: false,
+      lastEdit: null,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+      ...day.overrides,
+    });
+  });
   batch.update(doc(db, 'userState', uid), { openShiftId: null });
   return batch.commit();
+}
+
+/** A worked day, `daysAgo` days back, 8am to 4pm. */
+function workedDay(daysAgo) {
+  const midnight = new Date();
+  midnight.setHours(0, 0, 0, 0);
+  const base = midnight.getTime() - daysAgo * 86400000;
+  return {
+    start: Timestamp.fromMillis(base + 8 * 3600 * 1000),
+    end: Timestamp.fromMillis(base + 16 * 3600 * 1000),
+  };
 }
 
 test('an owner can end a shift left open more than a day', async () => {
@@ -541,6 +581,90 @@ test('a worker cannot be taken off the clock without their shift being closed', 
   await stuckShift('bob', 30);
   const db = await asAdmin();
   await assertFails(updateDoc(doc(db, 'userState', 'bob'), { openShiftId: null }));
+});
+
+test('a shift left open for days is closed as one shift per day', async () => {
+  await reset();
+  await establishedCompany();
+  await asUser('bob');
+  await stuckShift('bob', 3 * 24 + 2);
+  const db = await asAdmin();
+  await assertSucceeds(endShift(db, 'bob', [workedDay(2), workedDay(1)]));
+});
+
+test('a day written in has to name the shift it came out of', async () => {
+  await reset();
+  await establishedCompany();
+  await asUser('bob');
+  await stuckShift('bob', 3 * 24 + 2);
+  const db = await asAdmin();
+  await assertFails(
+    endShift(db, 'bob', [{ ...workedDay(2), overrides: { fromShiftId: 'somewhere-else' } }]),
+  );
+});
+
+test('a day cannot be written onto a different worker', async () => {
+  await reset();
+  await establishedCompany();
+  await asUser('bob');
+  await asUser('carol');
+  await stuckShift('bob', 3 * 24 + 2);
+  const db = await asAdmin();
+  await assertFails(
+    endShift(db, 'bob', [{ ...workedDay(2), overrides: { userId: 'carol' } }]),
+  );
+});
+
+test('a day cannot be written in the future', async () => {
+  await reset();
+  await establishedCompany();
+  await asUser('bob');
+  await stuckShift('bob', 3 * 24 + 2);
+  const db = await asAdmin();
+  await assertFails(endShift(db, 'bob', [workedDay(-2)]));
+});
+
+test('a day cannot end before it starts', async () => {
+  await reset();
+  await establishedCompany();
+  await asUser('bob');
+  await stuckShift('bob', 3 * 24 + 2);
+  const day = workedDay(2);
+  const db = await asAdmin();
+  await assertFails(endShift(db, 'bob', [{ start: day.end, end: day.start }]));
+});
+
+test('a supervisor who is not an owner cannot write days in at all', async () => {
+  await reset();
+  await establishedCompany();
+  await asUser('bob');
+  await stuckShift('bob', 3 * 24 + 2);
+  const db = await asUser('deputy', { role: 'admin' });
+  await assertFails(endShift(db, 'bob', [workedDay(2)]));
+});
+
+test('a written-in day cannot vouch for itself', async () => {
+  await reset();
+  await establishedCompany();
+  await asUser('bob');
+  await stuckShift('bob', 3 * 24 + 2);
+  const db = await asAdmin();
+  // Naming itself would satisfy the "came out of a closed shift" checks with
+  // nothing behind them, which would make this a free hand to write any shift.
+  await assertFails(
+    endShift(db, 'bob', [{ ...workedDay(2), overrides: { fromShiftId: 'split0' } }]),
+  );
+});
+
+test('a written-in day cannot be left open, putting the worker back on the clock', async () => {
+  await reset();
+  await establishedCompany();
+  await asUser('bob');
+  await stuckShift('bob', 3 * 24 + 2);
+  const db = await asAdmin();
+  await assertFails(
+    endShift(db, 'bob', [{ ...workedDay(2), overrides: { status: 'open', clockOutAt: null } }]),
+  );
 });
 
 test('the owner cannot be deactivated, even by another supervisor', async () => {

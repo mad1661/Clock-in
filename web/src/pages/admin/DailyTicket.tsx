@@ -15,6 +15,7 @@ import type {
   Equipment,
   JobSite,
   Shift,
+  UserDoc,
 } from '../../lib/types';
 
 const time = (t: { toDate: () => Date } | null) =>
@@ -41,9 +42,11 @@ const money = (n: number) =>
 function RentalTotals({
   ticket,
   rates,
+  wages,
 }: {
   ticket: Omit<DailyTicketDoc, 'createdAt' | 'updatedAt'>;
   rates: Map<string, number | null>;
+  wages: Map<string, number | null>;
 }) {
   const lines = ticket.rows.map((row) => {
     const rate = row.equipmentId ? (rates.get(row.equipmentId) ?? null) : null;
@@ -51,19 +54,29 @@ function RentalTotals({
     // minimum is something the yard pays its operator, not something the
     // customer is charged for a machine that sat still.
     const billable = row.tractorHours ?? 0;
+    // Paid on operator hours, which is the other side of exactly that: the
+    // four-hour minimum is in this number even when the machine never moved.
+    const wage = wages.get(row.userId) ?? null;
     return {
       label: row.equipmentType
         ? `${row.equipmentType}${row.machineNo ? `-${row.machineNo}` : ''}`
         : row.operatorName,
+      operator: row.operatorName,
       hours: billable,
       rate,
       amount: rate == null ? null : rate * billable,
+      operatorHours: row.operatorHours,
+      wage,
+      labour: wage == null ? null : wage * row.operatorHours,
     };
   });
 
   const priced = lines.filter((l) => l.amount != null);
   const total = priced.reduce((sum, l) => sum + (l.amount ?? 0), 0);
   const unpriced = lines.length - priced.length;
+  const paid = lines.filter((l) => l.labour != null);
+  const labour = paid.reduce((sum, l) => sum + (l.labour ?? 0), 0);
+  const unwaged = lines.length - paid.length;
 
   return (
     <Card title="Rental total (office copy)" className="no-print">
@@ -84,14 +97,37 @@ function RentalTotals({
                   <span>{line.hours} machine hours</span>
                   <span>{line.rate == null ? 'No rate set' : `${money(line.rate)}/hr`}</span>
                 </div>
+                <div className="row-meta">
+                  <span>
+                    {line.operator} · {line.operatorHours} operator hours
+                  </span>
+                  <span>{line.wage == null ? 'No wage set' : `${money(line.wage)}/hr`}</span>
+                  <span>{line.labour == null ? '—' : `${money(line.labour)} labour`}</span>
+                </div>
               </li>
             ))}
           </ul>
-          <p style={{ fontWeight: 700, marginBottom: 0 }}>Total: {money(total)}</p>
+          <div className="totals">
+            <span>
+              Rental <strong>{money(total)}</strong>
+            </span>
+            <span>
+              Labour <strong>{money(labour)}</strong>
+            </span>
+            <span>
+              Over labour <strong>{money(total - labour)}</strong>
+            </span>
+          </div>
           {unpriced > 0 && (
             <p className="hint">
               {unpriced} line{unpriced === 1 ? '' : 's'} not priced — set a rental rate under
               Equipment.
+            </p>
+          )}
+          {unwaged > 0 && (
+            <p className="hint">
+              {unwaged} operator{unwaged === 1 ? '' : 's'} with no wage on file — set it under
+              Workers.
             </p>
           )}
         </>
@@ -125,6 +161,7 @@ export default function DailyTicket() {
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [rates, setRates] = useState<Map<string, number | null>>(new Map());
+  const [wages, setWages] = useState<Map<string, number | null>>(new Map());
   const [signing, setSigning] = useState(false);
   const [drawn, setDrawn] = useState<SignatureStrokes | null>(null);
   const [printing, setPrinting] = useState(false);
@@ -158,7 +195,7 @@ export default function DailyTicket() {
     setSaved(false);
     try {
       const { start, end } = dayBounds(date);
-      const [shiftSnap, equipSnap, savedSnap] = await Promise.all([
+      const [shiftSnap, equipSnap, savedSnap, userSnap] = await Promise.all([
         getDocs(
           query(
             collection(db, 'shifts'),
@@ -169,11 +206,21 @@ export default function DailyTicket() {
         ),
         getDocs(collection(db, 'equipment')),
         getDoc(doc(db, 'dailyTickets', ticketId(site.id, date))),
+        // For the labour side of the office copy. Read here rather than stored
+        // on the ticket: a wage is what somebody is paid now, and freezing it
+        // into the ticket would leave last month's tickets quoting last month's
+        // rate as though it were still the answer.
+        getDocs(collection(db, 'users')),
       ]);
 
       const shifts = shiftSnap.docs.map((d) => withTimestamps<Shift>(d));
       const equipment = equipSnap.docs.map((d) => ({ ...(d.data() as Equipment), id: d.id }));
       setRates(new Map(equipment.map((e) => [e.id, e.hourlyRate ?? null])));
+      setWages(
+        new Map(
+          userSnap.docs.map((d) => [d.id, ((d.data() as UserDoc).hourlyRate ?? null) as number | null]),
+        ),
+      );
       const previous = savedSnap.exists() ? withTimestamps<Ticket>(savedSnap) : null;
 
       setTicket(mergeTicket(draftTicket(site, date, shifts, equipment), previous));
@@ -576,7 +623,7 @@ export default function DailyTicket() {
         </Modal>
       )}
 
-      {ticket && !loading && <RentalTotals ticket={ticket} rates={rates} />}
+      {ticket && !loading && <RentalTotals ticket={ticket} rates={rates} wages={wages} />}
     </>
   );
 }

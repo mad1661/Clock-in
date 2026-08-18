@@ -71,15 +71,20 @@ Once deployed, the app lives at **https://clockit-bc990.web.app**.
 - See which handset each punch was made on.
 - An **Activity** log: every change anyone makes, with who made it and — for
   anything that moved somebody's hours — what it was before and after.
-- An **owner**, one level above a supervisor. Only the owner hands ownership on,
-  and the owner cannot be switched off or demoted by anybody.
+- One or more **owners**, a level above a supervisor. Only an owner changes who
+  the owners are, and an owner cannot be switched off or demoted by anybody.
+- **Forgotten clock-outs** ended by an owner once a shift passes 24 hours —
+  split back into one shift per day if somebody was left on the clock for
+  several.
 - A live **On site** board: who is clocked in, at which site, for how long —
   with a link straight to that site's ticket for today.
 - Keep the yard's **equipment list**, assign machines to a job — before it starts
   or after it has finished — and set each machine's rental rate.
 - Assign each operator their usual machine, so it is already chosen when they
   clock in.
-- Set each employee's hourly wage; the timesheet totals labour cost from it.
+- Set each employee's hourly wage; the timesheet totals labour cost from it, and
+  each rental ticket shows what that day cost in labour against what it billed —
+  on the office copy only, never on the customer's printed sheet.
 - The **Daily Rental Ticket & Equipment Report**, built from the clock.
 - California overtime worked out per week, including the daily rules — four
   ten-hour days is 8 hours of overtime even though the week totals 40.
@@ -280,6 +285,17 @@ neutral act. Leaving it blank is allowed, records no hours at all, and leaves
 the shift in the review queue — unpaid and visible — until the real ones are
 entered. Either way the shift is flagged and the change is logged.
 
+**Left on the clock for several days**, the shift is asked about a day at a
+time and written back as **one closed shift per day**, prefilled from the site's
+hours where it keeps them and skipping any day left blank. That is not tidiness.
+Somebody on the clock since Monday did not work seventy-two straight hours —
+they went home each night — and a single record spanning the lot goes wrong
+three ways at once: the timesheet lands every hour on Monday, the California
+overtime split reads a seventy-two hour workday and pays most of it at double
+time, and Tuesday's and Wednesday's rental tickets show nobody on site at all.
+Each written-in day names the shift it came out of, and the rules check that:
+this is the repair of a forgotten punch, not a general power to invent history.
+
 The clock-state document and the shift are closed in the same write, so nobody
 can be quietly taken off the clock while their shift record stays open forever.
 
@@ -348,7 +364,7 @@ firestore.rules      the entire enforcement layer — read this first
 firestore.indexes.json
 firebase.json        hosting config; deploy targets are hosting + firestore
 deploy.sh            guided deploy
-tests/rules.test.mjs 81 tests against the rules, on the real emulator
+tests/rules.test.mjs 89 tests against the rules, on the real emulator
 web/
   src/lib/actions.ts every write the app makes
   src/lib/policy.ts  thresholds, mirrored by firestore.rules

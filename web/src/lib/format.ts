@@ -40,6 +40,10 @@ export function elapsedSince(startMs: number, nowMs: number): string {
   const h = Math.floor(total / 3600);
   const m = Math.floor((total % 3600) / 60);
   const s = total % 60;
+  const clock = `${String(h % 24).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  // Past a day, "76:04:11" reads as a typo. Somebody who forgot to clock out on
+  // Monday should be obviously three days stale at a glance.
+  if (h >= 24) return `${Math.floor(h / 24)}d ${clock}`;
   return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 

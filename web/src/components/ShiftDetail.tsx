@@ -122,6 +122,7 @@ function PunchDetail({ label, punch }: { label: string; punch: PunchRecord }) {
           {punch.method === 'gps' && 'Location verified'}
           {punch.method === 'photo' && 'Photo evidence'}
           {punch.method === 'unverified' && 'Unconfirmed'}
+          {punch.method === 'manual' && 'Written in by an owner'}
         </span>
       </div>
 

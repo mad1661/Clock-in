@@ -117,19 +117,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setOwnerUids([]);
       return;
     }
-    return onSnapshot(
-      doc(db, 'config', 'company'),
-      (snap) => {
-        const data = snap.data();
-        const list = Array.isArray(data?.ownerUids)
-          ? (data.ownerUids as string[])
-          : data?.ownerUid
-            ? [data.ownerUid as string]
-            : [];
-        setOwnerUids(list);
-      },
-      () => setOwnerUids([]),
-    );
+    // A Firestore listener is torn down for good when it errors, so without
+    // this an owner who hits one dropped connection silently stops being an
+    // owner — the buttons vanish and stay vanished until they reload, with
+    // nothing on screen to say why. Resubscribe instead.
+    let cancelled = false;
+    let unsubscribe: (() => void) | null = null;
+    let retry: number | undefined;
+
+    const listen = () => {
+      if (cancelled) return;
+      unsubscribe = onSnapshot(
+        doc(db, 'config', 'company'),
+        (snap) => {
+          const data = snap.data();
+          const list = Array.isArray(data?.ownerUids)
+            ? (data.ownerUids as string[])
+            : data?.ownerUid
+              ? [data.ownerUid as string]
+              : [];
+          setOwnerUids(list);
+        },
+        (err) => {
+          console.error('Could not read the company record', err);
+          retry = window.setTimeout(listen, 2000);
+        },
+      );
+    };
+    listen();
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(retry);
+      unsubscribe?.();
+    };
   }, [user]);
 
   // No custom claims to reconcile: with no Cloud Functions the role lives in
