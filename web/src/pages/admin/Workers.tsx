@@ -6,6 +6,7 @@ import {
   createWorker,
   sendWorkerPasswordReset,
   setWorkerActive,
+  transferOwnership,
   updateWorker,
 } from '../../lib/actions';
 import { errorMessage } from '../../lib/errors';
@@ -28,7 +29,7 @@ interface IssuedCredential {
 }
 
 export default function Workers() {
-  const { profile } = useAuth();
+  const { profile, ownerUid, isOwner } = useAuth();
   const [workers, setWorkers] = useState<UserDoc[] | null>(null);
   const [sites, setSites] = useState<JobSite[]>([]);
   const [machines, setMachines] = useState<Equipment[]>([]);
@@ -161,7 +162,10 @@ export default function Workers() {
               <li key={worker.uid} className="row">
                 <div className="row-head">
                   <span className="title">{worker.displayName}</span>
-                  {worker.role === 'admin' && <span className="pill pill-success">Admin</span>}
+                  {worker.uid === ownerUid && <span className="pill pill-success">Owner</span>}
+                  {worker.role === 'admin' && worker.uid !== ownerUid && (
+                    <span className="pill pill-success">Supervisor</span>
+                  )}
                   {!worker.active && <span className="pill pill-error">Deactivated</span>}
                   {worker.mustChangePassword && (
                     <span className="pill pill-warning">Temp password</span>
@@ -207,7 +211,33 @@ export default function Workers() {
                   >
                     Send reset link
                   </button>
-                  {worker.uid !== profile?.uid && (
+                  {/* Only the owner hands ownership on, and only to a
+                      supervisor: a worker made owner could not use any of it. */}
+                  {isOwner && worker.uid !== ownerUid && worker.role === 'admin' && worker.active && (
+                    <button
+                      type="button"
+                      className="small"
+                      onClick={() =>
+                        void run(async () => {
+                          if (
+                            !window.confirm(
+                              `Make ${worker.displayName} the owner?\n\nYou will stay a supervisor, ` +
+                                `but they take over as owner and you cannot undo this yourself — ` +
+                                `only they can hand it back.`,
+                            )
+                          )
+                            return;
+                          await transferOwnership(worker.uid, worker.displayName);
+                        })
+                      }
+                    >
+                      Make owner
+                    </button>
+                  )}
+                  {/* The owner cannot be switched off, by anyone, themselves
+                      included — a company with no reachable owner is not a
+                      state worth being able to reach. */}
+                  {worker.uid !== profile?.uid && worker.uid !== ownerUid && (
                     <button
                       type="button"
                       className={`small ${worker.active ? 'danger' : ''}`}

@@ -87,7 +87,21 @@ walk in.
 too — it drives the labour total on the timesheet and never appears on anything
 a customer sees.
 
-## 6. Equipment and the rental ticket
+## 6. Owner and supervisors
+
+Whoever claimed the company is its **owner**, shown with an Owner badge under
+Workers. Supervisors run the yard; the owner decides who the supervisors are.
+
+**Make owner** appears next to any active supervisor, and only the owner sees
+it. It is a transfer — you stay a supervisor, they become the owner, and only
+they can hand it back. The owner cannot be deactivated or demoted by anyone, so
+there is no way to end up with a company nobody owns.
+
+**Activity** lists every change anyone has made, newest first, searchable and
+exportable as CSV. Changes to somebody's hours show what the times were before
+and after. Nothing in that list can be edited or deleted by anybody.
+
+## 7. Equipment and the rental ticket
 
 **Equipment** → **+ Add machine**. Type and machine number exactly as they
 should print — `D8T`, `2`. Add the rental rate per hour while you are there.

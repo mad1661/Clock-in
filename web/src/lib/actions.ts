@@ -84,6 +84,7 @@ export async function bootstrapCompany(displayName: string) {
     createdAt: nowServer(),
   });
   await batch.commit();
+  await audit('company.claimed', { targetUserId: user.uid, email: user.email });
 }
 
 export async function companyExists(): Promise<boolean> {
@@ -204,6 +205,7 @@ export async function saveMySignature(signature: UserDoc['signature']) {
   const uid = auth.currentUser?.uid;
   if (!uid) throw new Error('Sign in first.');
   await updateDoc(doc(db, 'users', uid), { signature, updatedAt: nowServer() });
+  await audit(signature ? 'signature.saved' : 'signature.deleted', { targetUserId: uid });
 }
 
 export async function acknowledgePasswordChange() {
@@ -541,6 +543,19 @@ export async function requestShiftEdit(
     },
     updatedAt: nowServer(),
   });
+  await audit('shift.edit_requested', {
+    targetId: shift.id,
+    targetUserId: shift.userId,
+    reason: requested.reason,
+    from: {
+      clockInAt: shift.clockInAt?.toDate().toISOString() ?? null,
+      clockOutAt: shift.clockOutAt?.toDate().toISOString() ?? null,
+    },
+    to: {
+      clockInAt: requested.clockInAt.toISOString(),
+      clockOutAt: requested.clockOutAt?.toISOString() ?? null,
+    },
+  });
 }
 
 export async function cancelShiftEdit(shift: Shift) {
@@ -549,6 +564,7 @@ export async function cancelShiftEdit(shift: Shift) {
     pendingEdit: null,
     updatedAt: nowServer(),
   });
+  await audit('shift.edit_withdrawn', { targetId: shift.id, targetUserId: shift.userId });
 }
 
 export async function reviewShift(shift: Shift, decision: 'approved' | 'rejected', note: string) {
@@ -604,8 +620,21 @@ export async function reviewShiftEdit(
   await audit('shift.edit_reviewed', {
     targetId: shift.id,
     targetUserId: shift.userId,
+    worker: shift.userDisplayName,
     decision,
     note,
+    reason: pending.reason,
+    from: {
+      clockInAt: shift.clockInAt?.toDate().toISOString() ?? null,
+      clockOutAt: shift.clockOutAt?.toDate().toISOString() ?? null,
+    },
+    to:
+      decision === 'approved'
+        ? {
+            clockInAt: pending.requestedClockInAt?.toDate().toISOString() ?? null,
+            clockOutAt: pending.requestedClockOutAt?.toDate().toISOString() ?? null,
+          }
+        : null,
   });
 }
 
@@ -629,7 +658,26 @@ export async function adjustShift(
     pendingEdit: null,
     updatedAt: nowServer(),
   });
-  await audit('shift.manual_edit', { targetId: shift.id, targetUserId: shift.userId, note });
+  await audit('shift.manual_edit', {
+    targetId: shift.id,
+    targetUserId: shift.userId,
+    worker: shift.userDisplayName,
+    note,
+    // What the hours were and what they became. A log saying only that
+    // somebody edited a shift answers none of the questions you would ask.
+    from: {
+      clockInAt: shift.clockInAt?.toDate().toISOString() ?? null,
+      clockOutAt: shift.clockOutAt?.toDate().toISOString() ?? null,
+      minutes: shift.durationMinutes ?? null,
+    },
+    to: {
+      clockInAt: times.clockInAt.toISOString(),
+      clockOutAt: times.clockOutAt?.toISOString() ?? null,
+      minutes: times.clockOutAt
+        ? Math.round((times.clockOutAt.getTime() - times.clockInAt.getTime()) / 60000)
+        : null,
+    },
+  });
 }
 
 /**
@@ -739,6 +787,19 @@ export async function clearDailyTicketSignature(ticketId: string) {
     updatedAt: nowServer(),
   });
   await audit('ticket.unsign', { targetId: ticketId });
+}
+
+/**
+ * Hands ownership of the company to another supervisor.
+ *
+ * A transfer, not a grant: there is one owner, and after this it is somebody
+ * else. The rules only accept it from the current owner and only in favour of
+ * an active supervisor, so the company cannot end up owned by a deactivated
+ * account or by nobody at all.
+ */
+export async function transferOwnership(toUid: string, toName: string) {
+  await updateDoc(doc(db, 'config', 'company'), { ownerUid: toUid });
+  await audit('company.owner_changed', { targetUserId: toUid, to: toName });
 }
 
 /** Sets the number the next new ticket will take, to match the paper book. */

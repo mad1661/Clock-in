@@ -69,6 +69,10 @@ Once deployed, the app lives at **https://clockit-bc990.web.app**.
   beside the proposed ones. Approve and the times apply; turn it down with a note
   the worker sees on their timesheet.
 - See which handset each punch was made on.
+- An **Activity** log: every change anyone makes, with who made it and — for
+  anything that moved somebody's hours — what it was before and after.
+- An **owner**, one level above a supervisor. Only the owner hands ownership on,
+  and the owner cannot be switched off or demoted by anybody.
 - A live **On site** board: who is clocked in, at which site, for how long —
   with a link straight to that site's ticket for today.
 - Keep the yard's **equipment list**, assign machines to a job — before it starts
@@ -222,6 +226,37 @@ The printed page is the paper form, deliberately: same columns, same conditions
 text, same footer. Rental charges are shown on screen for the office and kept
 **off** the printed copy, because the form the customer has always been handed is
 a record of hours and pricing belongs on the invoice.
+
+### The activity log
+
+Every change is written to an append-only trail: employees added or edited,
+job sites and machines, approvals, corrections, tickets saved and signed, and
+ownership moving. Anything that moved somebody's hours records what they were
+before and what they became, because a log saying only that a shift was edited
+answers none of the questions you would ask of it.
+
+The rules stamp each entry with the server's clock and the signed-in account,
+and refuse updates and deletes outright — so an entry cannot be altered or
+removed afterwards, including by whoever wrote it.
+
+**The honest limit:** with no server, an audit entry cannot be *forced*. The
+app writes one for every change it makes, and nothing can tamper with what is
+written, but a client that bypassed the app entirely could make a change
+without logging it. The changes that matter most are still constrained by the
+rules themselves — hours cannot be edited by the worker they belong to, shifts
+cannot be deleted by anyone — so the log records who did what, while the rules
+decide what anybody is allowed to do at all.
+
+### Owner and supervisors
+
+The company has one **owner**, recorded when it was first claimed. Supervisors
+run the yard; the owner decides who the supervisors are.
+
+Only the owner can hand ownership on, and only to somebody who is already an
+active supervisor — otherwise a mistyped id would leave the company owned by
+nobody. And the owner's account cannot be deactivated or demoted by anyone,
+themselves included: ownership moves by being handed on, not by removing the
+person holding it. There are tests for each of those.
 
 ### Knowing what they clocked in on
 

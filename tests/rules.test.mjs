@@ -354,6 +354,87 @@ test('a deactivated admin has no admin powers left', async () => {
   );
 });
 
+// --- Ownership ---------------------------------------------------------------
+
+test('the owner can hand ownership to another supervisor', async () => {
+  await reset();
+  await establishedCompany();
+  await seed((db) =>
+    setDoc(doc(db, 'users', 'deputy'), { uid: 'deputy', role: 'admin', active: true }),
+  );
+  const db = await asAdmin();
+  await assertSucceeds(updateDoc(doc(db, 'config', 'company'), { ownerUid: 'deputy' }));
+});
+
+test('a supervisor who is not the owner cannot take ownership', async () => {
+  await reset();
+  await establishedCompany();
+  const db = await asUser('deputy', { role: 'admin' });
+  await assertFails(updateDoc(doc(db, 'config', 'company'), { ownerUid: 'deputy' }));
+});
+
+test('ownership cannot be handed to somebody who is not a supervisor', async () => {
+  await reset();
+  await establishedCompany();
+  await seed((db) =>
+    setDoc(doc(db, 'users', 'bob'), { uid: 'bob', role: 'worker', active: true }),
+  );
+  const db = await asAdmin();
+  await assertFails(updateDoc(doc(db, 'config', 'company'), { ownerUid: 'bob' }));
+});
+
+test('ownership cannot be handed to a deactivated supervisor', async () => {
+  await reset();
+  await establishedCompany();
+  await seed((db) =>
+    setDoc(doc(db, 'users', 'gone'), { uid: 'gone', role: 'admin', active: false }),
+  );
+  const db = await asAdmin();
+  await assertFails(updateDoc(doc(db, 'config', 'company'), { ownerUid: 'gone' }));
+});
+
+test('the owner cannot be deactivated, even by another supervisor', async () => {
+  await reset();
+  await establishedCompany();
+  await seed((db) =>
+    setDoc(doc(db, 'users', 'boss'), {
+      uid: 'boss',
+      role: 'admin',
+      active: true,
+      displayName: 'The Boss',
+    }),
+  );
+  const db = await asUser('deputy', { role: 'admin' });
+  await assertFails(
+    updateDoc(doc(db, 'users', 'boss'), { active: false, updatedAt: serverTimestamp() }),
+  );
+});
+
+test('the owner cannot be demoted to a worker', async () => {
+  await reset();
+  await establishedCompany();
+  await seed((db) =>
+    setDoc(doc(db, 'users', 'boss'), { uid: 'boss', role: 'admin', active: true }),
+  );
+  const db = await asUser('deputy', { role: 'admin' });
+  await assertFails(
+    updateDoc(doc(db, 'users', 'boss'), { role: 'worker', updatedAt: serverTimestamp() }),
+  );
+});
+
+test('the owner’s other details can still be edited', async () => {
+  await reset();
+  await establishedCompany();
+  const db = await asAdmin();
+  await assertSucceeds(
+    updateDoc(doc(db, 'users', 'boss'), {
+      displayName: 'Mark Dawson',
+      hourlyRate: 0,
+      updatedAt: serverTimestamp(),
+    }),
+  );
+});
+
 // --- Job sites -------------------------------------------------------------
 
 test('a worker cannot move a job site to wherever they happen to be', async () => {

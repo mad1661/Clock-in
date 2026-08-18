@@ -12,6 +12,7 @@ import Timesheets from './pages/admin/Timesheets';
 import ReviewQueue from './pages/admin/ReviewQueue';
 import OnSiteNow from './pages/admin/OnSiteNow';
 import Home from './pages/admin/Home';
+import Activity from './pages/admin/Activity';
 import Equipment from './pages/admin/Equipment';
 import DailyTicket from './pages/admin/DailyTicket';
 
@@ -55,6 +56,7 @@ function Shell({ children }: { children: React.ReactNode }) {
         {isAdmin && <NavLink to="/admin/workers">Workers</NavLink>}
         {isAdmin && <NavLink to="/admin/sites">Job sites</NavLink>}
         {isAdmin && <NavLink to="/admin/equipment">Equipment</NavLink>}
+        {isAdmin && <NavLink to="/admin/activity">Activity</NavLink>}
         <NavLink to="/account">Account</NavLink>
       </nav>
 
@@ -205,6 +207,14 @@ export function App() {
           element={
             <RequireAdmin>
               <DailyTicket />
+            </RequireAdmin>
+          }
+        />
+        <Route
+          path="/admin/activity"
+          element={
+            <RequireAdmin>
+              <Activity />
             </RequireAdmin>
           }
         />

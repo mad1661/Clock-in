@@ -222,6 +222,17 @@ let workerPassword;
   await page.waitForTimeout(1500);
   check('machine assigned to the job site', true);
 
+  // --- 2c. The activity log records what has happened so far ---
+  console.log('\n=== The activity log ===');
+  await openAdmin(page, /^activity$/i, '/admin/activity');
+  await expectVisible(page, page.getByText(/Machine added or edited/i), 'the equipment entry');
+  const activity = await page.locator('.list').innerText();
+  check(
+    'changes are logged with who made them',
+    activity.includes('boss@example.com') && activity.includes('Job site added'),
+    activity.replace(/\n/g, ' | ').slice(0, 200),
+  );
+
   // --- 3. Add a worker ---
   console.log('\n=== Administrator adds an employee ===');
   await openAdmin(page, /^workers$/i, '/admin/workers');
@@ -247,6 +258,17 @@ let workerPassword;
   check('one-time password issued', Boolean(workerPassword && workerPassword.length >= 10));
   await shot(page, 'ui-3-credential.png', true);
   await page.getByRole('button', { name: /^done$/i }).click();
+
+  // --- 3b. Ownership ---
+  console.log('\n=== Ownership ===');
+  await openAdmin(page, /^workers$/i, '/admin/workers');
+  const roster = await page.locator('.list').innerText();
+  check('the owner is marked as such', roster.includes('Owner'), roster.replace(/\n/g, ' | ').slice(0, 160));
+  // Pat is a worker, not a supervisor, so ownership is not offered for them.
+  check(
+    'ownership is not offered to a plain worker',
+    (await page.getByRole('button', { name: /make owner/i }).count()) === 0,
+  );
 
   await ctx.close();
 }
