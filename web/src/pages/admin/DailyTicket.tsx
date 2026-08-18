@@ -7,7 +7,8 @@ import { saveDailyTicket, signDailyTicket } from '../../lib/actions';
 import { errorMessage } from '../../lib/errors';
 import { withTimestamps } from '../../lib/snapshot';
 import { dayBounds, dayKey, draftTicket, mergeTicket, ticketId } from '../../lib/ticket';
-import { Banner, Card, Spinner } from '../../components/ui';
+import { Banner, Card, Modal, Spinner } from '../../components/ui';
+import { SignatureMark, SignaturePad, type SignatureStrokes } from '../../components/SignaturePad';
 import type {
   DailyTicket as DailyTicketDoc,
   DailyTicket as Ticket,
@@ -124,6 +125,8 @@ export default function DailyTicket() {
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [rates, setRates] = useState<Map<string, number | null>>(new Map());
+  const [signing, setSigning] = useState(false);
+  const [drawn, setDrawn] = useState<SignatureStrokes | null>(null);
 
   useEffect(() => {
     void (async () => {
@@ -190,9 +193,19 @@ export default function DailyTicket() {
     setBusy(true);
     setError(null);
     try {
-      const number = await saveDailyTicket(ticket);
-      setTicket({ ...ticket, ticketNumber: number });
+      // A signature attests to what was on the sheet when it was signed. Editing
+      // the sheet afterwards and keeping the mark would put the supervisor's
+      // name against figures they never saw, so an edit clears it.
+      const wasSigned = Boolean(ticket.signature);
+      const next = wasSigned
+        ? { ...ticket, signature: null, supervisorName: null, signedAt: null }
+        : ticket;
+      const number = await saveDailyTicket(next);
+      setTicket({ ...next, ticketNumber: number });
       setSaved(true);
+      if (wasSigned) {
+        setError('Saved. The ticket changed since it was signed, so it needs signing again.');
+      }
     } catch (err) {
       setError(errorMessage(err));
     } finally {
@@ -201,19 +214,18 @@ export default function DailyTicket() {
   }
 
   async function sign() {
-    if (!ticket) return;
+    if (!ticket || !drawn) return;
     setBusy(true);
     setError(null);
     try {
       // Saved first: signing a ticket whose rows were never written would put a
-      // name against a document that does not exist yet.
+      // signature against a document that does not exist yet.
       const number = await saveDailyTicket(ticket);
-      await signDailyTicket(ticket.id, profile?.displayName ?? profile?.email ?? 'Supervisor');
-      setTicket({
-        ...ticket,
-        ticketNumber: number,
-        supervisorName: profile?.displayName ?? profile?.email ?? 'Supervisor',
-      });
+      const name = profile?.displayName ?? profile?.email ?? 'Supervisor';
+      await signDailyTicket(ticket.id, name, drawn);
+      setTicket({ ...ticket, ticketNumber: number, supervisorName: name, signature: drawn });
+      setSigning(false);
+      setDrawn(null);
       setSaved(true);
     } catch (err) {
       setError(errorMessage(err));
@@ -257,8 +269,13 @@ export default function DailyTicket() {
           <button type="button" className="small" onClick={() => void save()} disabled={busy || !ticket}>
             Save
           </button>
-          <button type="button" className="small" onClick={() => void sign()} disabled={busy || !ticket}>
-            Sign off
+          <button
+            type="button"
+            className="small"
+            onClick={() => setSigning(true)}
+            disabled={busy || !ticket}
+          >
+            {ticket?.signature ? 'Re-sign' : 'Sign off'}
           </button>
           <button
             type="button"
@@ -408,15 +425,50 @@ export default function DailyTicket() {
 
           <div className="ticket-sign">
             <div className="ticket-sign-line">
-              {ticket.supervisorName && <span className="ticket-signed">{ticket.supervisorName}</span>}
+              {ticket.signature ? (
+                <SignatureMark signature={ticket.signature} />
+              ) : (
+                <button
+                  type="button"
+                  className="small no-print sig-prompt"
+                  onClick={() => setSigning(true)}
+                >
+                  Tap to sign
+                </button>
+              )}
             </div>
             <div className="k">Jobsite Supervisor&rsquo;s Signature</div>
+            {ticket.supervisorName && (
+              <div className="ticket-sign-name">
+                {ticket.supervisorName}
+                {ticket.signedAt && ` · ${ticket.signedAt.toDate().toLocaleString()}`}
+              </div>
+            )}
           </div>
 
           <footer className="ticket-foot">
             13930 OAKS AVENUE • CHINO, CALIFORNIA 91710 • (909) 591-6417
           </footer>
         </div>
+      )}
+
+      {signing && (
+        <Modal title="Sign the ticket" onClose={() => setSigning(false)}>
+          <p className="hint" style={{ marginTop: 0 }}>
+            Signing as <strong>{profile?.displayName ?? profile?.email}</strong>. Your name and the
+            time are recorded alongside the signature.
+          </p>
+          <SignaturePad onChange={setDrawn} />
+          <button
+            type="button"
+            className="primary block"
+            style={{ marginTop: '0.9rem' }}
+            disabled={busy || !drawn}
+            onClick={() => void sign()}
+          >
+            {busy ? 'Saving…' : 'Sign and save'}
+          </button>
+        </Modal>
       )}
 
       {ticket && !loading && <RentalTotals ticket={ticket} rates={rates} />}

@@ -182,6 +182,25 @@ down or sat waiting on another trade. And the **four-hour minimum never applies
 to machine hours** — that minimum is what the yard owes an operator who turned
 out, not something to bill a customer for a machine that stood still.
 
+### The supervisor's signature
+
+The ticket is signed on the sheet, where the paper form has its signature line —
+with a finger or a stylus. The mark is stored as **stroke paths**, not a picture:
+there is no Cloud Storage on this plan, so it has to live inside the ticket
+document, and a Firestore document stops at 1 MiB. Strokes come to a few
+kilobytes where a bitmap of the same signature is tens, and they stay sharp when
+the ticket is printed rather than going soft at 600 pixels wide. The rules cap
+how many strokes a ticket can carry, so nobody can push one towards that limit
+and wedge the day's report.
+
+The supervisor's name and the time are recorded alongside it — a mark on its own
+identifies nobody a year later when the invoice is queried.
+
+**Editing a signed ticket clears the signature.** A signature attests to the
+figures that were on the sheet when it was signed; keeping it through an edit
+would put a supervisor's name against numbers they never saw. Saving a signed
+ticket says so and asks for it again.
+
 Rebuilding a ticket re-derives its rows from the timesheet, picking up any
 corrections approved since, while keeping the meter readings already typed in.
 Saving fixes the ticket number, which is handed out one at a time by a Firestore

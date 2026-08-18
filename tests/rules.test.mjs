@@ -834,6 +834,7 @@ const ticket = (over = {}) => ({
   comments: '',
   supervisorName: null,
   signedAt: null,
+  signature: null,
   updatedAt: serverTimestamp(),
   ...over,
 });
@@ -870,6 +871,57 @@ test('a ticket cannot be back-dated by the client clock', async () => {
       doc(db, 'dailyTickets', `${SITE.id}_2026-08-03`),
       ticket({ updatedAt: Timestamp.fromMillis(Date.now() - 86400000) }),
     ),
+  );
+});
+
+test('a supervisor can sign the ticket', async () => {
+  await reset();
+  await establishedCompany();
+  const db = await asAdmin();
+  await assertSucceeds(
+    setDoc(
+      doc(db, 'dailyTickets', `${SITE.id}_2026-08-03`),
+      ticket({
+        supervisorName: 'The Boss',
+        signedAt: serverTimestamp(),
+        signature: { paths: ['M 10 20 Q 30 40 50 60'], width: 600, height: 200 },
+      }),
+    ),
+  );
+});
+
+test('a signature cannot be big enough to wedge the ticket', async () => {
+  await reset();
+  await establishedCompany();
+  const db = await asAdmin();
+  // The signature lives inside the ticket because there is no Cloud Storage,
+  // and a Firestore document stops at 1 MiB. Nobody gets to fill it.
+  await assertFails(
+    setDoc(
+      doc(db, 'dailyTickets', `${SITE.id}_2026-08-03`),
+      ticket({
+        signature: {
+          paths: Array.from({ length: 401 }, (_, i) => `M ${i} 0 L ${i} 9`),
+          width: 600,
+          height: 200,
+        },
+      }),
+    ),
+  );
+});
+
+test('a worker cannot sign a ticket', async () => {
+  await reset();
+  await establishedCompany();
+  await seed((db) => setDoc(doc(db, 'dailyTickets', `${SITE.id}_2026-08-03`), ticket()));
+  const db = await asUser('bob');
+  await assertFails(
+    updateDoc(doc(db, 'dailyTickets', `${SITE.id}_2026-08-03`), {
+      supervisorName: 'Bob',
+      signature: { paths: ['M 0 0 L 10 10'], width: 600, height: 200 },
+      signedAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    }),
   );
 });
 

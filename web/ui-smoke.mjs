@@ -171,6 +171,7 @@ let workerPassword;
   await signIn(page, ADMIN.email, ADMIN.password);
 
   await page.waitForSelector('text=/Make me the administrator/i', { timeout: 30000 });
+  await page.fill('#name', 'The Boss');
   await shot(page, 'ui-1-setup.png', true);
   await page.getByRole('button', { name: /make me the administrator/i }).click();
 
@@ -385,6 +386,40 @@ console.log('\n=== The daily rental ticket ===');
   const number = await page.locator('.ticket-no').innerText();
   check('ticket number allocated', /^\d+$/.test(number.trim()), `got "${number}"`);
   await shot(page, 'ui-10-ticket.png', true);
+
+  // --- 9. The supervisor signs it ---
+  console.log('\n=== Supervisor signs the ticket ===');
+  await page.getByRole('button', { name: /tap to sign|sign off/i }).first().click();
+  const pad = page.locator('.sig-pad');
+  await expectVisible(page, pad, 'the signature pad');
+
+  // Draw something with a real pointer, the way a finger or stylus would.
+  const box = await pad.boundingBox();
+  await page.mouse.move(box.x + box.width * 0.2, box.y + box.height * 0.6);
+  await page.mouse.down();
+  for (let i = 1; i <= 12; i++) {
+    const t = i / 12;
+    await page.mouse.move(
+      box.x + box.width * (0.2 + 0.6 * t),
+      box.y + box.height * (0.6 - Math.sin(t * Math.PI) * 0.3),
+    );
+  }
+  await page.mouse.up();
+
+  await page.getByRole('button', { name: /sign and save/i }).click();
+  await expectVisible(page, page.locator('.signature-mark'), 'the signature on the ticket');
+  check('signature captured and shown on the ticket', true);
+
+  const signedBy = await page.locator('.ticket-sign-name').innerText();
+  check('signature is attributed', signedBy.includes('The Boss'), `read "${signedBy}"`);
+  await shot(page, 'ui-11-signed.png', true);
+
+  // Editing the sheet after signing must not leave the mark standing against
+  // figures the supervisor never saw.
+  await page.fill('#t-comments', 'Added after signing.');
+  await page.getByRole('button', { name: /^save$/i }).click();
+  await expectVisible(page, page.getByText(/needs signing again/i), 'the re-sign warning');
+  check('editing a signed ticket clears the signature', (await page.locator('.signature-mark').count()) === 0);
 
   await ctx.close();
 }

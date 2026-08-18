@@ -1056,3 +1056,59 @@ a.small.primary {
 .chosen strong {
   font-size: 1rem;
 }
+
+/* --------------------------------------------------------------------------
+   Supervisor signature
+   -------------------------------------------------------------------------- */
+
+.sig-pad-wrap {
+  margin-top: 0.5rem;
+}
+
+.sig-pad {
+  display: block;
+  width: 100%;
+  /* Matches the 600×200 space the strokes are captured in, so what is drawn is
+     what gets printed. */
+  aspect-ratio: 3 / 1;
+  background: #fff;
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  /* Without this a finger drags the page instead of drawing on the pad. */
+  touch-action: none;
+  cursor: crosshair;
+}
+
+.sig-pad-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}
+
+.signature-mark {
+  width: 100%;
+  max-width: 260px;
+  height: 62px;
+  color: #111;
+}
+
+.sig-prompt {
+  margin-bottom: 0.25rem;
+}
+
+.ticket-sign-name {
+  font-size: 0.68rem;
+  margin-top: 0.2rem;
+  color: #333;
+}
+
+@media print {
+  /* The mark is the point of the page; make sure browsers keep the ink. */
+  .signature-mark {
+    color: #000 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}

@@ -186,6 +186,14 @@ export interface DailyTicket {
   comments: string;
   supervisorName: string | null;
   signedAt: Timestamp | null;
+  /**
+   * The supervisor's actual signature, as stroke paths in a 600×200 space.
+   *
+   * Stored on the ticket rather than in Cloud Storage, which this plan does not
+   * have. Strokes rather than a bitmap: a few kilobytes instead of tens, and it
+   * stays sharp when the ticket is printed.
+   */
+  signature: { paths: string[]; width: number; height: number } | null;
   createdAt?: Timestamp;
   updatedAt?: Timestamp;
 }

@@ -690,10 +690,21 @@ export async function saveDailyTicket(
   return assigned;
 }
 
-/** Records who signed the ticket off. The customer's copy needs a name on it. */
-export async function signDailyTicket(ticketId: string, supervisorName: string) {
+/**
+ * Signs the ticket off.
+ *
+ * The signature is what the customer's copy carries, so the name goes on with
+ * it — a mark on its own identifies nobody a year later when the invoice is
+ * queried.
+ */
+export async function signDailyTicket(
+  ticketId: string,
+  supervisorName: string,
+  signature: DailyTicket['signature'],
+) {
   await updateDoc(doc(db, 'dailyTickets', ticketId), {
     supervisorName: supervisorName.trim(),
+    signature,
     signedAt: nowServer(),
     updatedAt: nowServer(),
   });

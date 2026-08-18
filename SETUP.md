@@ -118,6 +118,12 @@ finish and their hours marked `*`, so nobody is missing from the customer's copy
 just because they forgot to clock out. **Rebuild from timesheet** picks up
 anything that has changed since.
 
+**Signing.** Tap the signature line at the bottom of the sheet (or **Sign off**)
+and sign with a finger or a stylus. Your name and the time are recorded with it,
+and it prints on the ticket. Editing the sheet afterwards clears the signature
+and asks you to sign again — it stands for the figures that were on it at the
+time.
+
 To carry on from your paper ticket book, set the next number once — it is stored
 on the company record and each new ticket takes the next one.
 

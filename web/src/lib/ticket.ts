@@ -172,6 +172,7 @@ export function draftTicket(
     comments: '',
     supervisorName: null,
     signedAt: null,
+    signature: null,
   };
 }
 
@@ -197,6 +198,7 @@ export function mergeTicket(
     comments: saved.comments,
     supervisorName: saved.supervisorName,
     signedAt: saved.signedAt,
+    signature: saved.signature ?? null,
     rows: draft.rows.map((row) => {
       const before = previous.get(`${row.userId}|${row.equipmentId ?? ''}`);
       return before?.tractorHours != null ? { ...row, tractorHours: before.tractorHours } : row;

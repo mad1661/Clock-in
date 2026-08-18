@@ -223,6 +223,12 @@ service cloud.firestore {
       allow create, update: if isAdmin()
         && request.resource.data.jobSiteId is string
         && request.resource.data.date is string
+        // A signature is stroke paths, and it lives in this document because
+        // there is no Cloud Storage. Bounded so nobody can push a ticket
+        // towards Firestore's 1 MiB document limit and wedge the day's report.
+        && (request.resource.data.get('signature', null) == null
+            || (request.resource.data.signature.paths is list
+                && request.resource.data.signature.paths.size() <= 400))
         && request.resource.data.updatedAt == request.time;
       allow delete: if false;
     }
