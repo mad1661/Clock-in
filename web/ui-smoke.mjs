@@ -396,18 +396,28 @@ console.log('\n=== The daily rental ticket ===');
     window.__overlayAtPrint = false;
     window.print = () => {
       window.__printed = true;
-      window.__overlayAtPrint = Boolean(document.querySelector('.print-overlay'));
+      window.__overlayAtPrint = Boolean(document.querySelector('.print-status'));
     };
   });
   await page.getByRole('button', { name: /print \/ pdf/i }).click();
   await page.waitForFunction(() => window.__printed === true, { timeout: 15000 });
   check(
-    'the "preparing" overlay is up before the browser blocks',
+    'the loading graphic is on the page before the browser blocks',
     await page.evaluate(() => window.__overlayAtPrint),
   );
-  // …and it goes away again rather than trapping the page behind a spinner.
-  await page.waitForFunction(() => !document.querySelector('.print-overlay'), { timeout: 15000 });
-  check('the overlay clears afterwards', true);
+
+  // It must NOT clear just because print() returned — Safari returns straight
+  // away and keeps building the sheet, which is what made it flash and vanish.
+  await page.waitForTimeout(1200);
+  check(
+    'it stays up while the sheet is still being built',
+    await page.locator('.print-status').isVisible(),
+  );
+
+  // Only the dialog closing takes it down.
+  await page.evaluate(() => window.dispatchEvent(new Event('afterprint')));
+  await page.waitForFunction(() => !document.querySelector('.print-status'), { timeout: 15000 });
+  check('it clears once printing is finished', true);
 
   // --- 9. The supervisor signs it ---
   console.log('\n=== Supervisor signs the ticket ===');

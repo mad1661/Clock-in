@@ -243,9 +243,10 @@ export default function DailyTicket() {
    * somebody has filled in the hour meters they have scrolled the toolbar off
    * the top of the page and would never see it.
    *
-   * Cleared on whichever comes first: `afterprint`, or the call returning.
-   * Browsers differ over whether print() blocks until the dialog closes, and a
-   * spinner nobody can dismiss is worse than the problem it was solving.
+   * Cleared by `afterprint`, and deliberately NOT when print() returns. Safari
+   * returns from that call straight away and carries on building the sheet in
+   * the background, so clearing there made the indicator flash up and vanish
+   * while the wait it was reporting had barely started.
    */
   function printTicket() {
     setPrinting(true);
@@ -258,19 +259,12 @@ export default function DailyTicket() {
       window.clearTimeout(guard);
       setPrinting(false);
     };
-    // Last resort, for a browser that neither blocks nor fires afterprint.
-    const guard = window.setTimeout(done, 30000);
+    // Backstop for a browser that never fires afterprint. Long, because
+    // stopping early is the failure people actually notice.
+    const guard = window.setTimeout(done, 60000);
     window.addEventListener('afterprint', done);
 
-    requestAnimationFrame(() =>
-      requestAnimationFrame(() => {
-        try {
-          window.print();
-        } finally {
-          done();
-        }
-      }),
-    );
+    requestAnimationFrame(() => requestAnimationFrame(() => window.print()));
   }
 
   async function sign(useInstead?: SignatureStrokes | null) {
@@ -302,17 +296,6 @@ export default function DailyTicket() {
 
   return (
     <>
-      {printing && (
-        <div className="print-overlay no-print" role="status" aria-live="polite">
-          <div className="print-overlay-card">
-            <Spinner label="Preparing the ticket…" />
-            <p className="hint" style={{ marginBottom: 0 }}>
-              Your browser is laying out the page. The print dialog will open in a moment.
-            </p>
-          </div>
-        </div>
-      )}
-
       <Card title="Daily rental ticket" className="no-print">
         {error && <Banner kind="error">{error}</Banner>}
         {saved && <Banner kind="success">Saved.</Banner>}
@@ -368,6 +351,17 @@ export default function DailyTicket() {
             {printing ? 'Preparing…' : 'Print / PDF'}
           </button>
         </div>
+
+        {printing && (
+          <div className="print-status" role="status" aria-live="polite">
+            <span className="spinner" aria-hidden="true" />
+            <span>
+              <strong>Building the printable sheet…</strong>
+              <br />
+              Your print dialog will open when it is ready.
+            </span>
+          </div>
+        )}
 
         <p className="hint">
           Rows come from the clock. Fill in the hour meters and any downtime, then save — that fixes
