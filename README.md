@@ -158,9 +158,18 @@ when they clock in; that, and the times, is everything the ticket's table needs:
 |---|---|
 | Type of equipment, Machine no. | The machine the operator picked at clock-in — preselected from their usual machine, or the only one on the job |
 | Name of operator | Their employee record |
-| Time in / out, twice | Their shifts that day, in order — the two pairs are the morning and the afternoon |
+| Time in / out, twice | Their shifts that day, in order — the two pairs are the morning and the afternoon, either side of lunch |
 | Operator hours | Hours worked, with the four-hour show-up minimum applied |
 | Tractor hours | The hour meter, read off the machine by the operator at clock-out or typed in by the supervisor |
+
+One operator gets **one line**, whether they clocked in once or four times. The
+day is grouped by person first and split by machine only when they genuinely
+moved onto a different one — a stint where nobody picked a machine stays on the
+operator's line rather than splitting the day in two over a blank field.
+
+Somebody still on the clock appears on the ticket with the finish time blank and
+their hours marked `*`, rather than being left off it. Leaving them off was
+worse: whoever forgot to clock out simply vanished from the customer's copy.
 
 Two things are deliberately not automatic. **Tractor hours** default to the
 hours worked but are meant to be overwritten: the meter records what the machine

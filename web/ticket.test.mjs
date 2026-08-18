@@ -100,9 +100,51 @@ test('moving onto a second machine gets its own line', () => {
   assert.deepEqual(rows.map((r) => r.operatorHours), [4, 4]);
 });
 
-test('a shift still open is not on the ticket', () => {
-  const rows = buildTicketRows([shift({ status: 'open', clockOutAt: null })], EQUIP);
-  assert.equal(rows.length, 0);
+test('clock in, out, and back in stays on ONE line', () => {
+  // Exactly what a lunch break looks like before the afternoon is finished.
+  const rows = buildTicketRows(
+    [
+      shift({ id: 'a', clockInAt: ts(7), clockOutAt: ts(12), durationMinutes: 300 }),
+      shift({ id: 'b', status: 'open', clockInAt: ts(12, 30), clockOutAt: null, durationMinutes: null }),
+    ],
+    EQUIP,
+  );
+  assert.equal(rows.length, 1);
+  const row = rows[0];
+  assert.equal(row.in1.toMillis(), ts(7).toMillis());
+  assert.equal(row.out1.toMillis(), ts(12).toMillis());
+  assert.equal(row.in2.toMillis(), ts(12, 30).toMillis());
+  // Still out there, so no finish time yet.
+  assert.equal(row.out2, null);
+  assert.equal(row.stillOnTheClock, true);
+  // Five hours banked; the afternoon is not earned until they clock out.
+  assert.equal(row.operatorHours, 5);
+});
+
+test('someone still on the clock is on the ticket, not missing from it', () => {
+  const rows = buildTicketRows(
+    [shift({ status: 'open', clockInAt: ts(7), clockOutAt: null, durationMinutes: null })],
+    EQUIP,
+  );
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].out1, null);
+  assert.equal(rows[0].stillOnTheClock, true);
+  assert.equal(rows[0].operatorHours, 0);
+});
+
+test('a stint with no machine picked stays on the operator’s line', () => {
+  // Picked the machine in the morning, forgot to after lunch. One line, not two.
+  const rows = buildTicketRows(
+    [
+      shift({ id: 'a', equipmentId: 'e1', clockInAt: ts(7), clockOutAt: ts(12), durationMinutes: 300 }),
+      shift({ id: 'b', equipmentId: null, clockInAt: ts(12, 30), clockOutAt: ts(15, 30), durationMinutes: 180 }),
+    ],
+    EQUIP,
+  );
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].machineNo, '2');
+  assert.equal(rows[0].operatorHours, 8);
+  assert.equal(rows[0].out2.toMillis(), ts(15, 30).toMillis());
 });
 
 test('an operator with no machine still gets a line', () => {
@@ -110,6 +152,22 @@ test('an operator with no machine still gets a line', () => {
   assert.equal(rows.length, 1);
   assert.equal(rows[0].equipmentType, '');
   assert.equal(rows[0].operatorHours, 5);
+});
+
+test('three stints in a day still fit the form’s two pairs', () => {
+  const rows = buildTicketRows(
+    [
+      shift({ id: 'a', clockInAt: ts(7), clockOutAt: ts(11), durationMinutes: 240 }),
+      shift({ id: 'b', clockInAt: ts(12), clockOutAt: ts(15), durationMinutes: 180 }),
+      shift({ id: 'c', clockInAt: ts(16), clockOutAt: ts(18), durationMinutes: 120 }),
+    ],
+    EQUIP,
+  );
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].in2.toMillis(), ts(12).toMillis());
+  // The last finish wins, so no hours are lost off the end of the line.
+  assert.equal(rows[0].out2.toMillis(), ts(18).toMillis());
+  assert.equal(rows[0].operatorHours, 9);
 });
 
 test('lines come out in the order the crew started', () => {

@@ -63,28 +63,57 @@ export function operatorHoursFor(minutes: number): number {
 export function buildTicketRows(shifts: Shift[], equipment: Equipment[]): TicketRow[] {
   const byId = new Map(equipment.map((e) => [e.id, e]));
 
-  // One line per operator per machine. A worker with no machine recorded still
-  // gets a line — their hours are real and the customer is still being billed
-  // for them; the machine columns are simply left for the supervisor to write in.
-  const lines = new Map<string, Shift[]>();
+  // Group by operator first, then split by machine — not the other way round.
+  // Someone who clocks out for lunch and back in belongs on ONE line with two
+  // in/out pairs, which is what the form's second pair of columns is for.
+  const byOperator = new Map<string, Shift[]>();
   for (const shift of shifts) {
-    if (shift.status !== 'closed' || !shift.clockOutAt) continue;
-    const key = `${shift.userId}|${shift.equipmentId ?? ''}`;
-    const list = lines.get(key);
+    const list = byOperator.get(shift.userId);
     if (list) list.push(shift);
-    else lines.set(key, [shift]);
+    else byOperator.set(shift.userId, [shift]);
+  }
+
+  const lines: Shift[][] = [];
+  for (const operatorShifts of byOperator.values()) {
+    const machines = new Set(operatorShifts.map((s) => s.equipmentId).filter(Boolean));
+
+    if (machines.size <= 1) {
+      // One machine all day, or none recorded. Either way it is one line, and a
+      // stint where the operator did not pick a machine still belongs on it —
+      // splitting the day in two over a blank field would misreport both halves.
+      lines.push(operatorShifts);
+      continue;
+    }
+
+    // Genuinely moved between machines, so each gets its own line: the ticket
+    // bills machine time, and one line covering two machines would misstate
+    // both. Stints with no machine recorded are left on their own line rather
+    // than guessed at — visibly wrong beats quietly wrong.
+    const groups = new Map<string, Shift[]>();
+    for (const shift of operatorShifts) {
+      const key = shift.equipmentId ?? '';
+      const list = groups.get(key);
+      if (list) list.push(shift);
+      else groups.set(key, [shift]);
+    }
+    lines.push(...groups.values());
   }
 
   const rows: TicketRow[] = [];
-  for (const group of lines.values()) {
+  for (const group of lines) {
     group.sort((a, b) => a.clockInAt.toMillis() - b.clockInAt.toMillis());
     const first = group[0];
-    const machine = first.equipmentId ? byId.get(first.equipmentId) : undefined;
+    const withMachine = group.find((s) => s.equipmentId) ?? first;
+    const machine = withMachine.equipmentId ? byId.get(withMachine.equipmentId) : undefined;
 
-    const minutes = group.reduce(
+    // Only finished stints count towards hours. Someone still on the clock has
+    // not earned the rest of it yet.
+    const done = group.filter((s) => s.clockOutAt);
+    const minutes = done.reduce(
       (sum, s) => sum + (s.durationMinutes ?? minutesBetween(s.clockInAt, s.clockOutAt!)),
       0,
     );
+    const stillOn = group.some((s) => !s.clockOutAt);
 
     // The form has room for two pairs. More than two stints in a day is rare
     // but real (a third trip out after dinner), so anything beyond the second
@@ -95,19 +124,23 @@ export function buildTicketRows(shifts: Shift[], equipment: Equipment[]): Ticket
     rows.push({
       userId: first.userId,
       operatorName: first.userDisplayName || first.userEmail,
-      equipmentId: first.equipmentId ?? null,
-      equipmentType: machine?.type ?? first.equipmentType ?? '',
-      machineNo: machine?.machineNo ?? first.machineNo ?? '',
+      equipmentId: withMachine.equipmentId ?? null,
+      equipmentType: machine?.type ?? withMachine.equipmentType ?? '',
+      machineNo: machine?.machineNo ?? withMachine.machineNo ?? '',
       // The hours actually worked, NOT the four-hour minimum: this stands in
       // for the hour meter, and a supervisor overwrites it when the machine ran
       // for less than the operator did — a breakdown, or waiting on another
       // trade. Billing the customer for machine time nobody had would be wrong.
-      tractorHours: first.tractorHours ?? ticketHours(minutes),
+      tractorHours: withMachine.tractorHours ?? ticketHours(minutes),
       in1: first.clockInAt,
-      out1: group[0].clockOutAt,
+      out1: first.clockOutAt,
       in2: second ? second.clockInAt : null,
       out2: second ? last.clockOutAt : null,
       operatorHours: operatorHoursFor(minutes),
+      // An operator who has not clocked out yet still appears, with the finish
+      // time blank. Leaving them off the ticket entirely was worse: whoever
+      // forgot to clock out simply vanished from the customer's copy.
+      stillOnTheClock: stillOn,
       shiftIds: group.map((s) => s.id),
     });
   }

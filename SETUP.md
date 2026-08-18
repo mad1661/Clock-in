@@ -106,6 +106,13 @@ They are asked for the hour meter when they clock out.
 clock. Type in any hour-meter readings and downtime, **Save** to fix the ticket
 number, then **Print / PDF**.
 
+One operator is one line. Clocking out for lunch and back in fills the form's
+second pair of in/out columns on that same line — the afternoon's finish time
+appears once they clock out. Anyone still on the clock is shown with a blank
+finish and their hours marked `*`, so nobody is missing from the customer's copy
+just because they forgot to clock out. **Rebuild from timesheet** picks up
+anything that has changed since.
+
 To carry on from your paper ticket book, set the next number once — it is stored
 on the company record and each new ticket takes the next one.
 

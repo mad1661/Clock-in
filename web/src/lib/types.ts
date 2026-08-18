@@ -157,6 +157,8 @@ export interface TicketRow {
   in2: Timestamp | null;
   out2: Timestamp | null;
   operatorHours: number;
+  /** True while one of this line's stints has no clock-out yet. */
+  stillOnTheClock?: boolean;
   /** The shifts this line was built from, so the ticket can be traced back. */
   shiftIds: string[];
 }

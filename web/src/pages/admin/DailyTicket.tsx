@@ -345,7 +345,10 @@ export default function DailyTicket() {
                   <td>{time(row.out1)}</td>
                   <td>{time(row.in2)}</td>
                   <td>{time(row.out2)}</td>
-                  <td>{row.operatorHours}</td>
+                  <td>
+                    {row.operatorHours}
+                    {row.stillOnTheClock && <span className="ticket-open" title="Still on the clock">*</span>}
+                  </td>
                 </tr>
               ))}
               {ticket.rows.length === 0 && (
@@ -363,6 +366,12 @@ export default function DailyTicket() {
               ))}
             </tbody>
           </table>
+
+          {ticket.rows.some((r) => r.stillOnTheClock) && (
+            <p className="ticket-note">
+              * still on the clock — hours are not final until they clock out
+            </p>
+          )}
 
           <div className="ticket-comments">
             <label htmlFor="t-comments" className="k">

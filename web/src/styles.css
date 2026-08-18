@@ -928,6 +928,19 @@ a.small {
   height: 2.2rem;
 }
 
+/* Marks a line whose hours are not final. Prints too — a supervisor handing
+   over a ticket needs to see it as much as the office does. */
+.ticket-open {
+  font-weight: 700;
+  margin-left: 0.15rem;
+}
+
+.ticket-note {
+  font-size: 0.66rem;
+  margin: 0.3rem 0 0;
+  font-style: italic;
+}
+
 .ticket-comments {
   margin-top: 0.7rem;
 }
