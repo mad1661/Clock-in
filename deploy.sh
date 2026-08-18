@@ -9,8 +9,8 @@
 #   ./deploy.sh                 # deploy everything
 #   ./deploy.sh --project foo   # skip the project prompt
 #   ./deploy.sh --hosting-only  # just rebuild and push the website
-#   ./deploy.sh --api-key AIza… # use this browser API key instead of the one
-#                               # the project reports (see "API key" below)
+#   ./deploy.sh --api-key AIza… # use this browser API key instead of the one the
+#                               # project reports, when that one is not valid
 
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -34,7 +34,7 @@ while [ $# -gt 0 ]; do
     --api-key) API_KEY_OVERRIDE="${2:-}"; shift 2 ;;
     --api-key=*) API_KEY_OVERRIDE="${1#*=}"; shift ;;
     --hosting-only) HOSTING_ONLY=true; shift ;;
-    -h|--help) sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) die "Unknown option: $1" ;;
   esac
 done

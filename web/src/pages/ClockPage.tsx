@@ -127,14 +127,24 @@ export default function ClockPage() {
     return sites?.find((s) => s.id === id) ?? null;
   }, [sites, openShift, selectedSiteId]);
 
-  // Only the machines assigned to this site. An operator should not be scrolling
-  // past the whole yard to find the one they are sitting in.
+  /**
+   * What this operator can pick from.
+   *
+   * The machines on this job, plus any machine they are personally assigned to.
+   * Their own machines are included even when the job does not list them: an
+   * operator sitting in a machine nobody assigned to the site would otherwise
+   * have no way to say so, and the ticket would be wrong. Theirs sort first.
+   */
   const siteMachines = useMemo(() => {
-    const ids = activeSite?.equipmentIds ?? [];
+    const onSite = new Set(activeSite?.equipmentIds ?? []);
+    const mine = new Set(profile?.equipmentIds ?? []);
     return machines
-      .filter((m) => ids.includes(m.id))
-      .sort((a, b) => equipmentLabel(a).localeCompare(equipmentLabel(b)));
-  }, [machines, activeSite]);
+      .filter((m) => onSite.has(m.id) || mine.has(m.id))
+      .sort((a, b) => {
+        const byOwner = Number(mine.has(b.id)) - Number(mine.has(a.id));
+        return byOwner !== 0 ? byOwner : equipmentLabel(a).localeCompare(equipmentLabel(b));
+      });
+  }, [machines, activeSite, profile?.equipmentIds]);
 
   const selectedMachine = useMemo(
     () => siteMachines.find((m) => m.id === selectedEquipmentId) ?? null,
@@ -147,13 +157,21 @@ export default function ClockPage() {
     [machines, openShift],
   );
 
-  // Default to the only machine, or the one they were on last.
+  // Their own machine first, then the only one on the job, then whatever they
+  // were on last. The point is that most operators never touch this control.
   useEffect(() => {
     if (!siteMachines.length) {
       setSelectedEquipmentId('');
       return;
     }
     if (siteMachines.some((m) => m.id === selectedEquipmentId)) return;
+
+    const mine = profile?.equipmentIds ?? [];
+    const assigned = siteMachines.filter((m) => mine.includes(m.id));
+    if (assigned.length === 1) {
+      setSelectedEquipmentId(assigned[0].id);
+      return;
+    }
     if (siteMachines.length === 1) {
       setSelectedEquipmentId(siteMachines[0].id);
       return;
@@ -162,7 +180,7 @@ export default function ClockPage() {
     setSelectedEquipmentId(
       remembered && siteMachines.some((m) => m.id === remembered) ? remembered : '',
     );
-  }, [siteMachines, selectedEquipmentId]);
+  }, [siteMachines, selectedEquipmentId, profile?.equipmentIds]);
 
   useEffect(() => {
     if (selectedEquipmentId) window.localStorage.setItem('lastEquipmentId', selectedEquipmentId);

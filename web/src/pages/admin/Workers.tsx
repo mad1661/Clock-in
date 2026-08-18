@@ -10,7 +10,7 @@ import {
 } from '../../lib/actions';
 import { errorMessage } from '../../lib/errors';
 import { Banner, Card, EmptyState, Modal, Spinner } from '../../components/ui';
-import type { JobSite, Role, UserDoc } from '../../lib/types';
+import { equipmentLabel, type Equipment, type JobSite, type Role, type UserDoc } from '../../lib/types';
 
 // Avoids 0/O and 1/l/I, which get misread off a screen and mistyped on a phone.
 const PASSWORD_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
@@ -31,6 +31,7 @@ export default function Workers() {
   const { profile } = useAuth();
   const [workers, setWorkers] = useState<UserDoc[] | null>(null);
   const [sites, setSites] = useState<JobSite[]>([]);
+  const [machines, setMachines] = useState<Equipment[]>([]);
   const [showAdd, setShowAdd] = useState(false);
   const [editing, setEditing] = useState<UserDoc | null>(null);
   const [credential, setCredential] = useState<IssuedCredential | null>(null);
@@ -51,6 +52,12 @@ export default function Workers() {
   useEffect(() => {
     return onSnapshot(query(collection(db, 'jobSites'), where('active', '==', true)), (snap) =>
       setSites(snap.docs.map((d) => ({ ...(d.data() as JobSite), id: d.id }))),
+    );
+  }, []);
+
+  useEffect(() => {
+    return onSnapshot(query(collection(db, 'equipment'), where('active', '==', true)), (snap) =>
+      setMachines(snap.docs.map((d) => ({ ...(d.data() as Equipment), id: d.id }))),
     );
   }, []);
 
@@ -114,6 +121,7 @@ export default function Workers() {
       {showAdd && (
         <WorkerForm
           sites={sites}
+          machines={machines}
           onClose={() => setShowAdd(false)}
           onSaved={(cred) => {
             setShowAdd(false);
@@ -125,6 +133,7 @@ export default function Workers() {
       {editing && (
         <WorkerForm
           sites={sites}
+          machines={machines}
           existing={editing}
           onClose={() => setEditing(null)}
           onSaved={() => setEditing(null)}
@@ -165,6 +174,14 @@ export default function Workers() {
                       ? `${worker.jobSiteIds.length} assigned site${worker.jobSiteIds.length === 1 ? '' : 's'}`
                       : 'All sites'}
                   </span>
+                  {worker.equipmentIds?.length ? (
+                    <span>
+                      {machines
+                        .filter((m) => worker.equipmentIds?.includes(m.id))
+                        .map((m) => equipmentLabel(m))
+                        .join(', ') || `${worker.equipmentIds.length} machines`}
+                    </span>
+                  ) : null}
                 </div>
                 <div className="row-actions">
                   <button type="button" className="small" onClick={() => setEditing(worker)}>
@@ -223,11 +240,13 @@ export default function Workers() {
 
 function WorkerForm({
   sites,
+  machines,
   existing,
   onClose,
   onSaved,
 }: {
   sites: JobSite[];
+  machines: Equipment[];
   existing?: UserDoc;
   onClose: () => void;
   onSaved: (credential?: IssuedCredential) => void;
@@ -237,6 +256,7 @@ function WorkerForm({
   const [role, setRole] = useState<Role>(existing?.role ?? 'worker');
   const [jobSiteIds, setJobSiteIds] = useState<string[]>(existing?.jobSiteIds ?? []);
   const [wage, setWage] = useState(existing?.hourlyRate == null ? '' : String(existing.hourlyRate));
+  const [equipmentIds, setEquipmentIds] = useState<string[]>(existing?.equipmentIds ?? []);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -247,7 +267,13 @@ function WorkerForm({
     try {
       const hourlyRate = wage.trim() === '' ? null : Number(wage);
       if (existing) {
-        await updateWorker(existing.uid, { displayName, role, jobSiteIds, hourlyRate });
+        await updateWorker(existing.uid, {
+          displayName,
+          role,
+          jobSiteIds,
+          equipmentIds,
+          hourlyRate,
+        });
         onSaved();
       } else {
         const generated = makePassword();
@@ -256,6 +282,7 @@ function WorkerForm({
           displayName,
           role,
           jobSiteIds,
+          equipmentIds,
           password: generated,
           hourlyRate,
         });
@@ -355,6 +382,49 @@ function WorkerForm({
                     }
                   />
                   {site.name}
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="field">
+          <label>Usual equipment</label>
+          <p className="hint" style={{ marginTop: 0 }}>
+            Their regular machine is picked for them when they clock in, so nobody has to hunt
+            through the yard list. They can still change it on the day.
+          </p>
+          {machines.length === 0 ? (
+            <p className="hint">
+              No machines in service yet. Add them under <strong>Equipment</strong>.
+            </p>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+              {machines.map((machine) => (
+                <label
+                  key={machine.id}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.6rem',
+                    color: 'var(--text)',
+                    fontWeight: 500,
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    style={{ width: 20, height: 20, minHeight: 20, flex: '0 0 auto' }}
+                    checked={equipmentIds.includes(machine.id)}
+                    onChange={(e) =>
+                      setEquipmentIds((prev) =>
+                        e.target.checked
+                          ? [...prev, machine.id]
+                          : prev.filter((id) => id !== machine.id),
+                      )
+                    }
+                  />
+                  {equipmentLabel(machine)}
+                  {machine.description ? ` — ${machine.description}` : ''}
                 </label>
               ))}
             </div>

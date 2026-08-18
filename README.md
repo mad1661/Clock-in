@@ -69,6 +69,8 @@ Once deployed, the app lives at **https://clockit-bc990.web.app**.
 - A live **On site** board: who is clocked in, at which site, for how long.
 - Keep the yard's **equipment list**, assign machines to a job — before it starts
   or after it has finished — and set each machine's rental rate.
+- Assign each operator their usual machine, so it is already chosen when they
+  clock in.
 - Set each employee's hourly wage; the timesheet totals labour cost from it.
 - The **Daily Rental Ticket & Equipment Report**, built from the clock.
 - California overtime worked out per week, including the daily rules — four
@@ -154,7 +156,7 @@ when they clock in; that, and the times, is everything the ticket's table needs:
 
 | Column | Where it comes from |
 |---|---|
-| Type of equipment, Machine no. | The machine the operator picked at clock-in |
+| Type of equipment, Machine no. | The machine the operator picked at clock-in — preselected from their usual machine, or the only one on the job |
 | Name of operator | Their employee record |
 | Time in / out, twice | Their shifts that day, in order — the two pairs are the morning and the afternoon |
 | Operator hours | Hours worked, with the four-hour show-up minimum applied |

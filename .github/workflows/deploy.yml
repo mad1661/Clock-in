@@ -6,6 +6,8 @@
 # Needs two repository settings:
 #   Secret   FIREBASE_SERVICE_ACCOUNT  — the service account JSON, pasted whole
 #   Variable FIREBASE_PROJECT_ID       — your Firebase project id
+#   Variable FIREBASE_WEB_API_KEY      — optional; only needed when the key the
+#                                        project reports is no longer valid
 name: Deploy
 
 on:
@@ -36,6 +38,11 @@ jobs:
       # has to be configured by hand is the secret.
       PROJECT_ID: ${{ vars.FIREBASE_PROJECT_ID || 'clockit-bc990' }}
       GOOGLE_APPLICATION_CREDENTIALS: ${{ github.workspace }}/.sa.json
+      # Not a secret — a Firebase web API key ships in the browser bundle by
+      # design. It exists because `apps:sdkconfig` keeps reporting the key
+      # recorded against the web app registration even after that key has been
+      # deleted, and there is otherwise no way to override it.
+      WEB_API_KEY: ${{ vars.FIREBASE_WEB_API_KEY || secrets.FIREBASE_WEB_API_KEY }}
 
     steps:
       - uses: actions/checkout@v4
@@ -114,6 +121,42 @@ jobs:
           ].join('\n'));
           NODE
           rm -f sdk.json
+
+          if [ -n "${WEB_API_KEY:-}" ]; then
+            sed -i "s|^VITE_FIREBASE_API_KEY=.*|VITE_FIREBASE_API_KEY=${WEB_API_KEY}|" web/.env
+            echo "Using FIREBASE_WEB_API_KEY instead of the key the project reports."
+          fi
+
+      # A dead API key produces a site that loads perfectly and rejects every
+      # sign-in. Catching it here costs one request; catching it in production
+      # costs everyone their morning.
+      - name: Check the API key works
+        if: steps.creds.outputs.ready == 'true'
+        run: |
+          KEY="$(grep '^VITE_FIREBASE_API_KEY=' web/.env | cut -d= -f2-)"
+          BODY="$(curl -sS -m 20 "https://identitytoolkit.googleapis.com/v1/recaptchaParams?key=${KEY}" || true)"
+          case "$BODY" in
+            *API_KEY_INVALID*|*"API key not valid"*)
+              {
+                echo "### Deploy stopped: the Firebase API key is not valid"
+                echo
+                echo "Nobody would be able to sign in to the site this build would produce."
+                echo "Firebase keeps reporting the key recorded against the web app even after"
+                echo "it has been deleted, so this cannot fix itself."
+                echo
+                echo "Create or restore a key at https://console.cloud.google.com/apis/credentials"
+                echo "then set it as the repository variable \`FIREBASE_WEB_API_KEY\`."
+              } >> "$GITHUB_STEP_SUMMARY"
+              echo "::error::Firebase API key is not valid — see the job summary."
+              exit 1
+              ;;
+            "")
+              echo "::warning::Could not reach Google to check the API key; continuing."
+              ;;
+            *)
+              echo "API key accepted by Firebase Authentication."
+              ;;
+          esac
 
       - name: Build
         if: steps.creds.outputs.ready == 'true'

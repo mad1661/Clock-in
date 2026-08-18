@@ -108,6 +108,7 @@ export async function createWorker(input: {
   displayName: string;
   role: Role;
   jobSiteIds: string[];
+  equipmentIds?: string[];
   password: string;
   hourlyRate?: number | null;
 }) {
@@ -146,6 +147,7 @@ export async function createWorker(input: {
       role: input.role,
       active: true,
       jobSiteIds: input.jobSiteIds,
+      equipmentIds: input.equipmentIds ?? [],
       hourlyRate: input.hourlyRate ?? null,
       mustChangePassword: true,
       createdAt: nowServer(),
@@ -161,7 +163,13 @@ export async function createWorker(input: {
 
 export async function updateWorker(
   uid: string,
-  patch: { displayName?: string; role?: Role; jobSiteIds?: string[]; hourlyRate?: number | null },
+  patch: {
+    displayName?: string;
+    role?: Role;
+    jobSiteIds?: string[];
+    equipmentIds?: string[];
+    hourlyRate?: number | null;
+  },
 ) {
   await updateDoc(doc(db, 'users', uid), { ...patch, updatedAt: nowServer() });
   await audit('worker.update', { targetUserId: uid, ...patch });

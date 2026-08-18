@@ -9,6 +9,8 @@ export interface UserDoc {
   role: Role;
   active: boolean;
   jobSiteIds: string[];
+  /** The machines this operator usually runs; preselected when they clock in. */
+  equipmentIds?: string[];
   mustChangePassword: boolean;
   /** Pay rate in dollars per hour. Internal — never printed on a customer's ticket. */
   hourlyRate?: number | null;

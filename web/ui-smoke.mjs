@@ -218,6 +218,12 @@ let workerPassword;
   await page.fill('#w-name', 'Pat Doyle');
   await page.fill('#w-email', 'pat@example.com');
   await page.fill('#w-wage', '38.50');
+  // Give them their usual machine, so the clock screen can pick it for them.
+  await page
+    .getByRole('dialog')
+    .locator('label', { hasText: 'D8T-2' })
+    .locator('input[type=checkbox]')
+    .check();
   await page.getByRole('button', { name: /create account/i }).click();
 
   // The generated password itself, not the words "one-time password" — that
@@ -241,14 +247,21 @@ console.log('\n=== Worker standing on site clocks in and out ===');
   await page.waitForSelector('#site', { timeout: 30000 });
   await selectSite(page, 'Harbour Works');
 
-  // The machine picker only appears when the site has equipment on it.
+  // The machine picker only appears when there is equipment to pick.
   await expectVisible(page, page.locator('#machine'), 'the machine picker');
   const machineValue = await page
     .locator('#machine')
     .evaluate((el) => [...el.options].find((o) => o.text.includes('D8T-2'))?.value);
   if (!machineValue) throw new Error('D8T-2 was not offered to the operator');
+
+  // Assigned to them, so it should already be chosen — no tapping required.
+  const preselected = await page.locator('#machine').inputValue();
+  check(
+    'their usual machine is picked for them',
+    preselected === machineValue,
+    `picker showed "${preselected}"`,
+  );
   await page.selectOption('#machine', machineValue);
-  check('operator can pick the machine they are on', true);
   await shot(page, 'ui-4-clock.png', true);
 
   await punch(page, 'in');

@@ -87,13 +87,20 @@ a customer sees.
 **Equipment** → **+ Add machine**. Type and machine number exactly as they
 should print — `D8T`, `2`. Add the rental rate per hour while you are there.
 
-Then open the job site and tick the machines that are on that job. You can
-change that list at any point, before the job starts or after it has finished:
-the ticket is built from the machine each operator actually clocked in on, not
-from the assignment list.
+Machines get assigned in two places, and both are optional:
 
-Operators then pick their machine when they clock in, and are asked for the hour
-meter when they clock out.
+- **On the job site** — tick the machines that are on that job. Change it at any
+  point, before the job starts or after it has finished.
+- **On the employee** — tick the machines an operator usually runs. Theirs is
+  then already selected when they clock in, so most people never touch the
+  picker.
+
+Neither list restricts anyone. An operator is always offered the machines on the
+job *and* their own, so somebody who climbs into a machine nobody assigned can
+still say so — and the ticket is built from what they actually picked, never
+from the assignment lists.
+
+They are asked for the hour meter when they clock out.
 
 **Rental ticket** → pick the site and the day. The table fills itself in from the
 clock. Type in any hour-meter readings and downtime, **Save** to fix the ticket
