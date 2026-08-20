@@ -19,17 +19,26 @@ const root = createRoot(container);
 // instead of a blank page and a stack trace in the console.
 void (async () => {
   try {
-    const [{ App }, { AuthProvider }, { BrowserRouter }] = await Promise.all([
-      import('./App'),
-      import('./auth/AuthProvider'),
-      import('react-router-dom'),
-    ]);
+    const [{ App }, { AuthProvider }, { BrowserRouter }, { ErrorBoundary }, { installErrorReporting }] =
+      await Promise.all([
+        import('./App'),
+        import('./auth/AuthProvider'),
+        import('react-router-dom'),
+        import('./components/ErrorBoundary'),
+        import('./lib/report'),
+      ]);
+
+    // Everything a try/catch never sees: a promise nobody awaited, a script
+    // that failed to load, a handler that threw.
+    installErrorReporting();
 
     root.render(
       <StrictMode>
         <BrowserRouter>
           <AuthProvider>
-            <App />
+            <ErrorBoundary>
+              <App />
+            </ErrorBoundary>
           </AuthProvider>
         </BrowserRouter>
       </StrictMode>,

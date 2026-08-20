@@ -73,6 +73,8 @@ Once deployed, the app lives at **https://clockit-bc990.web.app**.
   anything that moved somebody's hours — what it was before and after.
 - One or more **owners**, a level above a supervisor. Only an owner changes who
   the owners are, and an owner cannot be switched off or demoted by anybody.
+- **Problem reports**: the app records its own faults and shows them, grouped by
+  cause, on a tab only one person can open.
 - **Forgotten clock-outs** ended by an owner once a shift passes 24 hours —
   split back into one shift per day if somebody was left on the clock for
   several.
@@ -252,6 +254,42 @@ rules themselves — hours cannot be edited by the worker they belong to, shifts
 cannot be deleted by anyone — so the log records who did what, while the rules
 decide what anybody is allowed to do at all.
 
+### Problem reports
+
+Nobody is watching the app run, so a fault on a job site used to end with a
+worker shrugging and going back to paper. The app now reports its own faults: an
+uncaught error, a promise nobody handled, a screen that failed to draw, a file
+that would not load, and every error the app shows anybody. They land in
+Firestore and appear under **Problems**, grouped by cause rather than listed by
+occurrence — sixty copies of one broken screen is one thing to fix, and a list
+that prints it sixty times hides the other two.
+
+Each report carries the message, the first frames of the stack, which screen,
+which build, which handset and whose account. It carries **no** hours, no
+locations and no customer detail.
+
+**Only one person can read them.** Not every supervisor, and not every owner: a
+report names whose account hit the fault, and nobody should find their own
+mistakes listed on a screen their colleagues browse. That person is whoever
+claimed the company, and the tab itself is the only way to hand it on — the
+rules accept the change only from whoever currently holds it, so there is no way
+to help yourself to it.
+
+Three things keep this from becoming a problem of its own. It never throws and
+never blocks, so reporting a fault cannot become a second fault and a punch can
+never fail because logging it failed. It is rate limited hard — the same fault
+once per ten minutes, twelve reports per tab, ever — because a render loop can
+throw thousands of times a minute and the free Firestore tier is 20,000 writes a
+day. And expected errors are filtered out: a mistyped password or a lost signal
+is the app working, not a fault.
+
+Reports are ticked off, never deleted. If the same fault happens again it comes
+back to the top by itself.
+
+**The honest limit:** a fault that stops the app reaching Firestore cannot report
+itself either. The write is queued and goes out when signal returns, but if the
+tab is closed first it is lost.
+
 ### Owners and supervisors
 
 A company has one or more **owners**, the first recorded when it was claimed.
@@ -364,7 +402,7 @@ firestore.rules      the entire enforcement layer — read this first
 firestore.indexes.json
 firebase.json        hosting config; deploy targets are hosting + firestore
 deploy.sh            guided deploy
-tests/rules.test.mjs 89 tests against the rules, on the real emulator
+tests/rules.test.mjs 101 tests against the rules, on the real emulator
 web/
   src/lib/actions.ts every write the app makes
   src/lib/policy.ts  thresholds, mirrored by firestore.rules
@@ -381,6 +419,10 @@ npm run emulators     # in one terminal…
 npm run test:ui       # …then the browser test in another
 npm run test:overtime # California overtime maths
 ```
+
+The browser suite prints a warning and reloads if the roster ever comes back
+incomplete — see the note in `ui-smoke.mjs`, and the canary in `Workers.tsx`
+that would put it on the Problems tab if it ever happened to somebody real.
 
 `npm test` is the one that matters. With no server, the rules are the only thing
 standing between a worker and everyone else's timesheet, so they are tested

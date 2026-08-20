@@ -30,6 +30,7 @@ const LABELS: Record<string, string> = {
   'company.claimed': 'Company set up',
   'company.owner_added': 'Owner added',
   'company.owner_removed': 'Owner removed',
+  'company.support_changed': 'Problem reports handed over',
   // Written by the older single-owner version. Kept so entries from before
   // ownership could be shared still read as something.
   'company.owner_changed': 'Ownership handed over',
@@ -60,6 +61,7 @@ const LABELS: Record<string, string> = {
 const NOTABLE = new Set([
   'company.owner_added',
   'company.owner_removed',
+  'company.support_changed',
   'company.owner_changed',
   'shift.auto_close',
   'shift.manual_edit',

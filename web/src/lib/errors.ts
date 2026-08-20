@@ -1,5 +1,6 @@
 import { FirebaseError } from 'firebase/app';
 import type { LocationFailure } from './geolocation';
+import { reportError } from './report';
 
 /** Converts the geolocation helper's failure shape into what a punch stores. */
 export function toLocationError(failure: LocationFailure) {
@@ -13,8 +14,37 @@ export function toLocationError(failure: LocationFailure) {
  * are Firestore's. The raw ones are useless on a job site — "Missing or
  * insufficient permissions" means nothing to somebody holding a phone — so the
  * few that actually happen get plain English and the rest get a safe fallback.
+ *
+ * Every error the app shows anybody passes through here, which makes it the one
+ * place worth reporting from. What gets reported is filtered: a mistyped
+ * password or a lost signal is the app working, and burying the real faults in
+ * thousands of those would make the Problems tab useless.
  */
+const EXPECTED = new Set([
+  // The person, not the app.
+  'auth/wrong-password',
+  'auth/invalid-credential',
+  'auth/user-not-found',
+  'auth/invalid-email',
+  'auth/weak-password',
+  'auth/email-already-in-use',
+  'auth/too-many-requests',
+  'auth/user-token-expired',
+  'auth/requires-recent-login',
+  // A job site with one bar of signal, not a fault.
+  'unavailable',
+  'deadline-exceeded',
+  'cancelled',
+  'auth/network-request-failed',
+]);
+
 export function errorMessage(err: unknown): string {
+  const code = err instanceof FirebaseError ? err.code : null;
+  if (!code || !EXPECTED.has(code)) reportError(err, { kind: 'shown-to-user' });
+  return describeError(err);
+}
+
+function describeError(err: unknown): string {
   if (err instanceof FirebaseError) {
     switch (err.code) {
       case 'permission-denied':

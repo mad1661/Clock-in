@@ -11,6 +11,7 @@ import {
   updateWorker,
 } from '../../lib/actions';
 import { errorMessage } from '../../lib/errors';
+import { reportError } from '../../lib/report';
 import { Banner, Card, EmptyState, Modal, Spinner } from '../../components/ui';
 import { equipmentLabel, type Equipment, type JobSite, type Role, type UserDoc } from '../../lib/types';
 
@@ -43,13 +44,40 @@ export default function Workers() {
   useEffect(() => {
     return onSnapshot(
       query(collection(db, 'users'), orderBy('displayName')),
-      (snap) => setWorkers(snap.docs.map((d) => ({ ...(d.data() as UserDoc), uid: d.id }))),
+      (snap) => {
+        const list = snap.docs.map((d) => ({ ...(d.data() as UserDoc), uid: d.id }));
+        // A canary, not a feature. You are always on your own roster — you are
+        // reading it — so a snapshot without you in it is impossible, and if it
+        // ever happens the list somebody is looking at is missing people.
+        //
+        // This has been seen in the browser suite: the tab's roster came back
+        // holding only the most recently written employee and stayed that way
+        // until a reload, always alongside the sandbox proxy breaking other
+        // connections, and never reproducible on a clean run. That points at the
+        // test harness rather than at the app, which is exactly the kind of
+        // conclusion worth checking rather than assuming. If it ever happens to
+        // somebody real, this puts it on the Problems tab with a name and a
+        // count instead of leaving it as a story about a list that looked wrong.
+        if (
+          !snap.metadata.fromCache &&
+          profile?.uid &&
+          profile.displayName &&
+          list.length > 0 &&
+          !list.some((w) => w.uid === profile.uid)
+        ) {
+          reportError(new Error('Roster came back without the person reading it'), {
+            kind: 'impossible-state',
+            rows: list.length,
+          });
+        }
+        setWorkers(list);
+      },
       (err) => {
         setWorkers([]);
         setError(errorMessage(err));
       },
     );
-  }, []);
+  }, [profile?.uid, profile?.displayName]);
 
   useEffect(() => {
     return onSnapshot(query(collection(db, 'jobSites'), where('active', '==', true)), (snap) =>

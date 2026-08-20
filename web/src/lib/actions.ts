@@ -1025,6 +1025,34 @@ export async function removeOwner(uid: string, name: string) {
   await audit('company.owner_removed', { targetUserId: uid, to: name });
 }
 
+/**
+ * Ticks a problem report off.
+ *
+ * Not a delete: the report is evidence of what somebody hit, and a list you can
+ * empty is a list that stops being a record. If the same fault happens again it
+ * comes back to the top by itself, which is the point — "fixed" that did not fix
+ * it should not stay looking fixed.
+ */
+export async function resolveProblem(id: string) {
+  await updateDoc(doc(db, 'errorLogs', id), {
+    resolved: true,
+    resolvedAt: nowServer(),
+    resolvedBy: auth.currentUser?.uid ?? null,
+  });
+}
+
+/**
+ * Hands the Problems tab to somebody else.
+ *
+ * Only the person who currently holds it can do this, and only to an active
+ * supervisor — the rules check both. There is no way to give yourself a look at
+ * everybody's faults.
+ */
+export async function handOverProblems(uid: string, name: string) {
+  await updateDoc(doc(db, 'config', 'company'), { supportUid: uid });
+  await audit('company.support_changed', { targetUserId: uid, to: name });
+}
+
 /** Sets the number the next new ticket will take, to match the paper book. */
 export async function setNextTicketNumber(next: number) {
   await updateDoc(doc(db, 'config', 'company'), { nextTicketNumber: Math.max(1, Math.round(next)) });

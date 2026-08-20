@@ -75,6 +75,25 @@ service cloud.firestore {
       return isActive() && request.auth.uid in owners();
     }
 
+    // Whoever looks after the app itself. One person, not a role: problem
+    // reports carry stack traces and name whose account hit them, and that is
+    // for whoever fixes the thing rather than for everybody who runs the yard.
+    //
+    // Defaults to whoever claimed the company, so this works on a database that
+    // predates the field, and can be handed to somebody else from the Problems
+    // tab — only by the person who currently holds it.
+    function supportOf(company) {
+      return company.get('supportUid', ownersOf(company)[0]);
+    }
+
+    function supportUid() {
+      return supportOf(get(/databases/$(database)/documents/config/company).data);
+    }
+
+    function isSupport() {
+      return isActive() && request.auth.uid == supportUid();
+    }
+
     // --- Geometry -----------------------------------------------------------
     // Rules have no sqrt and no cos. So the fence is compared as SQUARED
     // distance against squared radius (no sqrt needed), and each job site
@@ -169,7 +188,15 @@ service cloud.firestore {
                 && proposed().size() <= 20
                 && proposed().toSet().size() == proposed().size()
                 && added().size() + removed().size() == 1
-                && (added().size() == 0 || isActiveAdmin(added()[0]))));
+                && (added().size() == 0 || isActiveAdmin(added()[0]))))
+        // Who problem reports go to is only ever changed by the person they
+        // currently go to, and only to another active supervisor. Without this
+        // line it would be an ordinary field on this document, which any
+        // supervisor may write — and pointing it at themselves would be all it
+        // took to start reading everybody's faults.
+        && (supportOf(request.resource.data) == supportOf(resource.data)
+            || (request.auth.uid == supportOf(resource.data)
+                && isActiveAdmin(supportOf(request.resource.data))));
       allow delete: if false;
     }
 
@@ -493,6 +520,41 @@ service cloud.firestore {
         && request.resource.data.actorUid == request.auth.uid
         && request.resource.data.at == request.time;
       allow update, delete: if false;
+    }
+
+    // --- Problem reports ----------------------------------------------------
+    // What broke, for whom, on which screen and which build. Written by the app
+    // itself when something fails, so that a fault on a job site reaches the
+    // office instead of being shrugged at.
+    //
+    // Anybody signed in may write one — including somebody deactivated, since
+    // "I have been locked out and I do not know why" is exactly the report worth
+    // having. Only one person can read them — see supportUid() above. A report
+    // carries a stack trace and names whose account hit it, and nobody should
+    // find their own mistakes listed on a screen their colleagues browse.
+
+    match /errorLogs/{logId} {
+      allow read: if isSupport();
+      allow create: if signedIn()
+        && request.resource.data.actorUid == request.auth.uid
+        && request.resource.data.at == request.time
+        && request.resource.data.resolved == false
+        && request.resource.data.message is string
+        && request.resource.data.message.size() <= 500
+        && request.resource.data.get('stack', '') is string
+        && request.resource.data.get('stack', '').size() <= 2000
+        && request.resource.data.fingerprint is string
+        && request.resource.data.fingerprint.size() <= 300;
+
+      // Ticking one off. Only that: the report itself is evidence and cannot be
+      // rewritten by anybody, including whoever it came from.
+      allow update: if isSupport()
+        && request.resource.data.diff(resource.data)
+             .affectedKeys().hasOnly(['resolved', 'resolvedAt', 'resolvedBy'])
+        && request.resource.data.resolved is bool;
+
+      // Kept, not tidied away. An owner clears the list by fixing what is on it.
+      allow delete: if false;
     }
 
     match /{document=**} {

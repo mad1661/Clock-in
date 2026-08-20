@@ -14,10 +14,11 @@ import OnSiteNow from './pages/admin/OnSiteNow';
 import Home from './pages/admin/Home';
 import Activity from './pages/admin/Activity';
 import Equipment from './pages/admin/Equipment';
+import Problems from './pages/admin/Problems';
 import DailyTicket from './pages/admin/DailyTicket';
 
 function Shell({ children }: { children: React.ReactNode }) {
-  const { profile, isAdmin, signOut } = useAuth();
+  const { profile, isAdmin, isSupport, signOut } = useAuth();
 
   return (
     <div className="app">
@@ -57,12 +58,28 @@ function Shell({ children }: { children: React.ReactNode }) {
         {isAdmin && <NavLink to="/admin/sites">Job sites</NavLink>}
         {isAdmin && <NavLink to="/admin/equipment">Equipment</NavLink>}
         {isAdmin && <NavLink to="/admin/activity">Activity</NavLink>}
+        {/* One person only. A problem report carries a stack trace and names
+            whose account hit it — that is for whoever fixes the app, not for
+            everybody who runs the yard. */}
+        {isSupport && <NavLink to="/admin/problems">Problems</NavLink>}
         <NavLink to="/account">Account</NavLink>
       </nav>
 
       <main>{children}</main>
     </div>
   );
+}
+
+function RequireSupport({ children }: { children: React.ReactNode }) {
+  const { isSupport } = useAuth();
+  if (!isSupport) {
+    return (
+      <Banner kind="error" title="Not your section">
+        Problem reports go to one person, and it is not this account.
+      </Banner>
+    );
+  }
+  return <>{children}</>;
 }
 
 function RequireAdmin({ children }: { children: React.ReactNode }) {
@@ -216,6 +233,14 @@ export function App() {
             <RequireAdmin>
               <Activity />
             </RequireAdmin>
+          }
+        />
+        <Route
+          path="/admin/problems"
+          element={
+            <RequireSupport>
+              <Problems />
+            </RequireSupport>
           }
         />
         <Route path="*" element={<Navigate to="/" replace />} />

@@ -25,6 +25,10 @@ interface AuthState {
   ownerUids: string[];
   /** True for anyone who can decide who else owns the company. */
   isOwner: boolean;
+  /** The one person problem reports go to. */
+  supportUid: string | null;
+  /** True only for that person. */
+  isSupport: boolean;
   signOut: () => Promise<void>;
 }
 
@@ -35,6 +39,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<UserDoc | null>(null);
   const [profileError, setProfileError] = useState<Error | null>(null);
   const [ownerUids, setOwnerUids] = useState<string[]>([]);
+  const [supportUid, setSupportUid] = useState<string | null>(null);
   const [authResolved, setAuthResolved] = useState(false);
   const [profileResolved, setProfileResolved] = useState(false);
 
@@ -115,6 +120,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!user) {
       setOwnerUids([]);
+      setSupportUid(null);
       return;
     }
     // A Firestore listener is torn down for good when it errors, so without
@@ -137,6 +143,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               ? [data.ownerUid as string]
               : [];
           setOwnerUids(list);
+          // Defaults to whoever claimed the company, exactly as firestore.rules
+          // reads it, so this works on a database written before the field
+          // existed.
+          setSupportUid((data?.supportUid as string) ?? list[0] ?? null);
         },
         (err) => {
           console.error('Could not read the company record', err);
@@ -167,11 +177,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isAdmin: profile?.role === 'admin' && profile.active,
       ownerUids,
       isOwner: Boolean(user && profile?.active && ownerUids.includes(user.uid)),
+      supportUid,
+      isSupport: Boolean(user && profile?.active && supportUid && user.uid === supportUid),
       signOut: async () => {
         await fbSignOut(auth);
       },
     }),
-    [user, profile, profileError, authResolved, profileResolved, ownerUids],
+    [user, profile, profileError, authResolved, profileResolved, ownerUids, supportUid],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

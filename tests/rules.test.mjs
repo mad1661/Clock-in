@@ -1366,6 +1366,148 @@ test('a worker cannot read the audit trail', async () => {
 
 // --- Everything else -------------------------------------------------------
 
+// --- Problem reports ---------------------------------------------------------
+
+const problem = (over = {}) => ({
+  fingerprint: 'permission-denied|nope|at x|/clock',
+  message: 'Missing or insufficient permissions.',
+  code: 'permission-denied',
+  stack: 'Error: nope\n  at x',
+  where: '/clock',
+  context: { kind: 'shown-to-user' },
+  actorUid: 'bob',
+  actorEmail: 'bob@example.com',
+  build: '20260101T000',
+  device: null,
+  online: true,
+  resolved: false,
+  at: serverTimestamp(),
+  ...over,
+});
+
+test('anybody signed in can report a problem', async () => {
+  await reset();
+  await establishedCompany();
+  const db = await asUser('bob');
+  await assertSucceeds(setDoc(doc(db, 'errorLogs', 'e1'), problem()));
+});
+
+test('a deactivated worker can still report one — being locked out is the report', async () => {
+  await reset();
+  await establishedCompany();
+  const db = await asUser('gone', { active: false });
+  await assertSucceeds(setDoc(doc(db, 'errorLogs', 'e1'), problem({ actorUid: 'gone' })));
+});
+
+test('a report cannot be filed in somebody else’s name', async () => {
+  await reset();
+  await establishedCompany();
+  const db = await asUser('bob');
+  await assertFails(setDoc(doc(db, 'errorLogs', 'e1'), problem({ actorUid: 'boss' })));
+});
+
+test('a report cannot arrive already marked fixed', async () => {
+  await reset();
+  await establishedCompany();
+  const db = await asUser('bob');
+  await assertFails(setDoc(doc(db, 'errorLogs', 'e1'), problem({ resolved: true })));
+});
+
+test('a report cannot carry a novel’s worth of stack', async () => {
+  await reset();
+  await establishedCompany();
+  const db = await asUser('bob');
+  await assertFails(
+    setDoc(doc(db, 'errorLogs', 'e1'), problem({ stack: 'x'.repeat(2001) })),
+  );
+});
+
+test('only the one person problem reports go to can read them', async () => {
+  await reset();
+  await establishedCompany();
+  await seed((db) => setDoc(doc(db, 'errorLogs', 'e1'), problem()));
+
+  // The claimer holds it by default, with no field on the company saying so.
+  const boss = await asAdmin();
+  await assertSucceeds(getDocs(collection(boss, 'errorLogs')));
+
+  const deputy = await asUser('deputy', { role: 'admin' });
+  await assertFails(getDocs(collection(deputy, 'errorLogs')));
+
+  const bob = await asUser('bob');
+  await assertFails(getDocs(collection(bob, 'errorLogs')));
+});
+
+test('a co-owner does not get to read them either', async () => {
+  await reset();
+  await sharedOwnership();
+  await seed((db) => setDoc(doc(db, 'errorLogs', 'e1'), problem()));
+  const db = await asUser('deputy', { role: 'admin' });
+  await assertFails(getDocs(collection(db, 'errorLogs')));
+});
+
+test('a report can be ticked off, but never edited or deleted', async () => {
+  await reset();
+  await establishedCompany();
+  await seed((db) => setDoc(doc(db, 'errorLogs', 'e1'), problem()));
+  const db = await asAdmin();
+  const { deleteDoc } = await import('firebase/firestore');
+  await assertSucceeds(
+    updateDoc(doc(db, 'errorLogs', 'e1'), {
+      resolved: true,
+      resolvedAt: serverTimestamp(),
+      resolvedBy: 'boss',
+    }),
+  );
+  await assertFails(updateDoc(doc(db, 'errorLogs', 'e1'), { message: 'nothing to see here' }));
+  await assertFails(deleteDoc(doc(db, 'errorLogs', 'e1')));
+});
+
+test('somebody else’s report cannot be ticked off by a supervisor who is not support', async () => {
+  await reset();
+  await establishedCompany();
+  await seed((db) => setDoc(doc(db, 'errorLogs', 'e1'), problem()));
+  const db = await asUser('deputy', { role: 'admin' });
+  await assertFails(updateDoc(doc(db, 'errorLogs', 'e1'), { resolved: true }));
+});
+
+test('problem reports can be handed on, but only by whoever holds them', async () => {
+  await reset();
+  await establishedCompany();
+  await seed((db) =>
+    setDoc(doc(db, 'users', 'deputy'), { uid: 'deputy', role: 'admin', active: true }),
+  );
+
+  const deputy = await asUser('deputy', { role: 'admin' });
+  await assertFails(updateDoc(doc(deputy, 'config', 'company'), { supportUid: 'deputy' }));
+
+  const boss = await asAdmin();
+  await assertSucceeds(updateDoc(doc(boss, 'config', 'company'), { supportUid: 'deputy' }));
+});
+
+test('problem reports cannot be handed to somebody who is not a supervisor', async () => {
+  await reset();
+  await establishedCompany();
+  await seed((db) => setDoc(doc(db, 'users', 'bob'), { uid: 'bob', role: 'worker', active: true }));
+  const db = await asAdmin();
+  await assertFails(updateDoc(doc(db, 'config', 'company'), { supportUid: 'bob' }));
+});
+
+test('handing them on moves who can read them', async () => {
+  await reset();
+  await establishedCompany();
+  await seed(async (db) => {
+    await setDoc(doc(db, 'users', 'deputy'), { uid: 'deputy', role: 'admin', active: true });
+    await setDoc(doc(db, 'errorLogs', 'e1'), problem());
+  });
+  const boss = await asAdmin();
+  await assertSucceeds(updateDoc(doc(boss, 'config', 'company'), { supportUid: 'deputy' }));
+
+  await assertFails(getDocs(collection(boss, 'errorLogs')));
+  const deputy = await asUser('deputy', { role: 'admin' });
+  await assertSucceeds(getDocs(collection(deputy, 'errorLogs')));
+});
+
 test('an undeclared collection is closed to everyone', async () => {
   await reset();
   await establishedCompany();

@@ -130,6 +130,26 @@ Their real clock-in on the first day cannot be moved; correct it afterwards on
 exportable as CSV. Changes to somebody's hours show what the times were before
 and after. Nothing in that list can be edited or deleted by anybody.
 
+## 6b. Problems
+
+**Problems** is a tab only you can see — it does not appear for supervisors, and
+it does not appear for other owners. It lists faults the app hit while somebody
+was using it: a screen that failed to draw, a write the database refused, a file
+that did not load, any error anybody was shown.
+
+They are grouped by cause, so a broken screen that sixty people hit is one line
+saying `60×`, not sixty lines. Open **Detail** for the stack, the build that
+phone was running and which handset it was. **Mark fixed** ticks one off; if it
+happens again it comes straight back.
+
+Nothing there carries hours, locations or customer detail — who hit it, what
+broke, which screen.
+
+If you would rather somebody else handled these, **Hand this over to somebody
+else** on that tab passes it to an active supervisor. Only whoever currently
+holds it can do that, so nobody can help themselves to it — and once you have
+passed it on, only they can pass it back.
+
 ## 7. Equipment and the rental ticket
 
 **Equipment** → **+ Add machine**. Type and machine number exactly as they
