@@ -91,6 +91,9 @@ Once deployed, the app lives at **https://clockit-bc990.web.app**.
 - **Weekly timecards** for the yard: hours at Coburn Yard are payroll, not
   billing, so they print on the paper weekly timecard form instead of a rental
   ticket — one employee per page, ready to sign and hand to an auditor.
+- Bring the whole crew on at once: download an **Excel template**, fill in a
+  row per employee, upload it back — accounts are previewed before anything is
+  created, and the one-time passwords come back as a list to hand out.
 - California overtime worked out per week, including the daily rules — four
   ten-hour days is 8 hours of overtime even though the week totals 40.
 

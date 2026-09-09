@@ -11,14 +11,16 @@
     "test:ui": "node ui-smoke.mjs",
     "test:overtime": "node --experimental-strip-types overtime.test.mjs",
     "test:ticket": "node --experimental-strip-types --test ticket.test.mjs",
-    "test:timecard": "node --experimental-strip-types --test timecard.test.mjs"
+    "test:timecard": "node --experimental-strip-types --test timecard.test.mjs",
+    "test:roster": "node --experimental-strip-types --test roster.test.mjs"
   },
   "dependencies": {
     "firebase": "^11.1.0",
     "leaflet": "^1.9.4",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-router-dom": "^6.28.0"
+    "react-router-dom": "^6.28.0",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@types/leaflet": "^1.9.22",

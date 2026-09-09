@@ -14,21 +14,7 @@ import { errorMessage } from '../../lib/errors';
 import { reportError } from '../../lib/report';
 import { Banner, Card, EmptyState, Modal, Spinner } from '../../components/ui';
 import { equipmentLabel, type Equipment, type JobSite, type Role, type UserDoc } from '../../lib/types';
-
-// Avoids 0/O and 1/l/I, which get misread off a screen and mistyped on a phone.
-const PASSWORD_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
-
-function makePassword(length = 14): string {
-  const bytes = new Uint32Array(length);
-  crypto.getRandomValues(bytes);
-  return Array.from(bytes, (b) => PASSWORD_ALPHABET[b % PASSWORD_ALPHABET.length]).join('');
-}
-
-interface IssuedCredential {
-  displayName: string;
-  email: string;
-  password: string;
-}
+import { ImportEmployees, makePassword, type IssuedCredential } from './ImportEmployees';
 
 export default function Workers() {
   const { profile, ownerUids, isOwner } = useAuth();
@@ -36,6 +22,7 @@ export default function Workers() {
   const [sites, setSites] = useState<JobSite[]>([]);
   const [machines, setMachines] = useState<Equipment[]>([]);
   const [showAdd, setShowAdd] = useState(false);
+  const [showImport, setShowImport] = useState(false);
   const [editing, setEditing] = useState<UserDoc | null>(null);
   const [credential, setCredential] = useState<IssuedCredential | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -148,6 +135,13 @@ export default function Workers() {
         </Modal>
       )}
 
+      {showImport && (
+        <ImportEmployees
+          existingEmails={workers.map((w) => w.email)}
+          onClose={() => setShowImport(false)}
+        />
+      )}
+
       {showAdd && (
         <WorkerForm
           sites={sites}
@@ -176,6 +170,9 @@ export default function Workers() {
           <>
             <button type="button" className="small ghost" onClick={() => setShowInactive((v) => !v)}>
               {showInactive ? 'Hide deactivated' : 'Show deactivated'}
+            </button>
+            <button type="button" className="small" onClick={() => setShowImport(true)}>
+              Import from Excel
             </button>
             <button type="button" className="small primary" onClick={() => setShowAdd(true)}>
               + Add employee
