@@ -245,6 +245,8 @@ export async function upsertJobSite(input: {
   equipmentIds?: string[];
   shiftStart?: string | null;
   shiftEnd?: string | null;
+  /** True for the yard: hours go on weekly timecards, not a rental ticket. */
+  timecardsOnly?: boolean;
 }) {
   const ref = input.id ? doc(db, 'jobSites', input.id) : doc(collection(db, 'jobSites'));
   await setDoc(
@@ -263,6 +265,7 @@ export async function upsertJobSite(input: {
       equipmentIds: input.equipmentIds ?? [],
       shiftStart: input.shiftStart || null,
       shiftEnd: input.shiftEnd || null,
+      timecardsOnly: input.timecardsOnly ?? false,
       updatedAt: nowServer(),
     },
     { merge: true },

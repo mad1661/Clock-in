@@ -9,6 +9,7 @@ import { acquireLocation } from '../../lib/geolocation';
 import { fmtDistance } from '../../lib/format';
 import { describeHours } from '../../lib/policy';
 import { dayKey } from '../../lib/ticket';
+import { isTimecardSite } from '../../lib/timecard';
 import { Banner, Card, EmptyState, Modal, Spinner } from '../../components/ui';
 import { geocode, type GeocodeHit } from '../../lib/basemap';
 import type { Equipment, JobSite } from '../../lib/types';
@@ -79,6 +80,7 @@ export default function JobSites() {
               <li key={site.id} className="row">
                 <div className="row-head">
                   <span className="title">{site.name}</span>
+                  {isTimecardSite(site) && <span className="pill pill-muted">Timecards</span>}
                   {!site.active && <span className="pill pill-error">Retired</span>}
                 </div>
                 <div className="row-meta">
@@ -104,9 +106,15 @@ export default function JobSites() {
                   <button type="button" className="small" onClick={() => setEditing(site)}>
                     Edit
                   </button>
-                  <Link className="small" to={`/admin/ticket?site=${site.id}&date=${today}`}>
-                    Today's ticket
-                  </Link>
+                  {isTimecardSite(site) ? (
+                    <Link className="small" to="/admin/timecards">
+                      This week's timecards
+                    </Link>
+                  ) : (
+                    <Link className="small" to={`/admin/ticket?site=${site.id}&date=${today}`}>
+                      Today's ticket
+                    </Link>
+                  )}
                   <a
                     className="small"
                     href={`https://www.google.com/maps/search/?api=1&query=${site.lat},${site.lng}`}
@@ -163,6 +171,9 @@ function SiteForm({
   const [lng, setLng] = useState(site ? String(site.lng) : '');
   const [radius, setRadius] = useState(String(site?.radiusMeters ?? DEFAULT_RADIUS));
   const [active, setActive] = useState(site?.active ?? true);
+  // Reflects what the site currently does, name-default included, so the yard
+  // shows as ticked even before anyone has saved the flag explicitly.
+  const [timecardsOnly, setTimecardsOnly] = useState(site ? isTimecardSite(site) : false);
   const [busy, setBusy] = useState(false);
   const [locating, setLocating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -243,6 +254,7 @@ function SiteForm({
         equipmentIds,
         shiftStart,
         shiftEnd,
+        timecardsOnly,
       });
       onSaved();
     } catch (err) {
@@ -467,6 +479,30 @@ function SiteForm({
             </label>
           </div>
         )}
+
+        <div className="field">
+          <label
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.6rem',
+              color: 'var(--text)',
+              fontWeight: 500,
+            }}
+          >
+            <input
+              type="checkbox"
+              style={{ width: 20, height: 20, minHeight: 20, flex: '0 0 auto' }}
+              checked={timecardsOnly}
+              onChange={(e) => setTimecardsOnly(e.target.checked)}
+            />
+            Hours go on weekly timecards
+          </label>
+          <p className="hint">
+            For the yard. Hours here are payroll, not billing: they print on the weekly timecard
+            under <strong>Timecards</strong> and never appear on a daily rental ticket.
+          </p>
+        </div>
 
         <div className="field">
           <label>Equipment on this job</label>

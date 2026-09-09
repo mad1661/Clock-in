@@ -38,6 +38,13 @@ export interface JobSite {
   /** Machines available at this site. Editable before or after the job runs. */
   equipmentIds?: string[];
   /**
+   * Hours here go on the weekly timecard, never on a Daily Rental Ticket.
+   * That is the yard: its hours are payroll, not something billed to a
+   * customer. Absent means "decide by name" — see isTimecardSite in
+   * lib/timecard.ts.
+   */
+  timecardsOnly?: boolean | null;
+  /**
    * The hours this site runs, as "HH:MM" in local time. Optional, and advisory:
    * a punch outside them is recorded and flagged, never refused. See
    * `hoursVerdict` in lib/policy.ts for why.

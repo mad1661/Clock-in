@@ -6,6 +6,7 @@ import { useAuth } from '../../auth/AuthProvider';
 import { errorMessage } from '../../lib/errors';
 import { withTimestamps } from '../../lib/snapshot';
 import { dayBounds, dayKey } from '../../lib/ticket';
+import { isTimecardSite } from '../../lib/timecard';
 import { elapsedSince } from '../../lib/format';
 import { Banner, Card, Spinner } from '../../components/ui';
 import type { Equipment, JobSite, Shift, UserDoc } from '../../lib/types';
@@ -133,8 +134,16 @@ export default function Home() {
       entry.people.add(shift.userId);
       counts.set(shift.jobSiteId, entry);
     }
-    return [...counts.entries()].map(([id, v]) => ({ id, name: v.name, people: v.people.size }));
-  }, [todayShifts]);
+    // Yard hours are payroll, not billing — their day goes on the weekly
+    // timecard, so the row here points there instead of at a rental ticket.
+    const yardIds = new Set((sites ?? []).filter(isTimecardSite).map((s) => s.id));
+    return [...counts.entries()].map(([id, v]) => ({
+      id,
+      name: v.name,
+      people: v.people.size,
+      timecards: yardIds.has(id),
+    }));
+  }, [todayShifts, sites]);
 
   if (openShifts === null || sites === null) return <Spinner label="Loading…" />;
 
@@ -279,12 +288,18 @@ export default function Home() {
                   </span>
                 </div>
                 <div className="row-actions">
-                  <Link
-                    className="small primary"
-                    to={`/admin/ticket?site=${site.id}&date=${today}`}
-                  >
-                    Open ticket
-                  </Link>
+                  {site.timecards ? (
+                    <Link className="small primary" to="/admin/timecards">
+                      Open timecards
+                    </Link>
+                  ) : (
+                    <Link
+                      className="small primary"
+                      to={`/admin/ticket?site=${site.id}&date=${today}`}
+                    >
+                      Open ticket
+                    </Link>
+                  )}
                 </div>
               </li>
             ))}
