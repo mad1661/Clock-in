@@ -1,6 +1,6 @@
 {
   "name": "clock-in-web",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -12,11 +12,13 @@
     "test:overtime": "node --experimental-strip-types overtime.test.mjs",
     "test:ticket": "node --experimental-strip-types --test ticket.test.mjs",
     "test:timecard": "node --experimental-strip-types --test timecard.test.mjs",
-    "test:roster": "node --experimental-strip-types --test roster.test.mjs"
+    "test:roster": "node --experimental-strip-types --test roster.test.mjs",
+    "test:timecard-pdf": "node --experimental-strip-types --test timecardPdf.test.mjs"
   },
   "dependencies": {
     "firebase": "^11.1.0",
     "leaflet": "^1.9.4",
+    "pdf-lib": "^1.17.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^6.28.0",

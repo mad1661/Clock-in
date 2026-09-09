@@ -209,10 +209,12 @@ Hours worked at the yard are the company paying its own people, not something
 billed to a customer, so they never appear on a Daily Rental Ticket. They go on
 the **Timecards** tab instead: one card per employee per Monday-to-Sunday week,
 laid out to match the paper "COBURN EQUIPMENT WEEKLY TIME CARD" form, headed
-with the week-ending Sunday. Print the stack — or pick one employee from the
-dropdown — and use the browser's "Save as PDF" for a file; each card is its own
-page, so any single one can be pulled out for an audit. The employee signs the
-printed sheet.
+with the week-ending Sunday. **Download PDF** saves the stack — or one employee
+picked from the dropdown — as a fillable Adobe PDF form: every box is a real
+form field, pre-filled from the clock, that can be corrected in Acrobat or
+Reader, and the signature box takes Fill & Sign. Each card is its own page, so
+any single one can be pulled out for an audit. **Print** sends the same cards
+to paper, one per page, for a wet signature.
 
 Each day's paycheck hours are split into regular, overtime and double time
 using the same California rules as the timesheet — worked out over the

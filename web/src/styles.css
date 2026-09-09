@@ -1199,25 +1199,14 @@ a.small.primary {
   }
 
   /* One employee's card per page, so any single card can be handed over. */
-  .timecards-one-per-page .timecard-sheet {
+  .timecards .timecard-sheet {
     break-after: page;
     page-break-after: always;
   }
 
-  .timecards-one-per-page .timecard-sheet:last-child {
+  .timecards .timecard-sheet:last-child {
     break-after: auto;
     page-break-after: auto;
-  }
-
-  /* As many whole cards as fit on each page — two, on letter paper. Rows are
-     a touch shorter than on screen so the pair clears the page with room to
-     spare; the hand-written fields are still a comfortable pen height. */
-  .timecards-fit .timecard-table td {
-    height: 1.5rem;
-  }
-
-  .timecards-fit .timecard-sheet + .timecard-sheet {
-    margin-top: 0.3in;
   }
 
   .timecard-table th {
