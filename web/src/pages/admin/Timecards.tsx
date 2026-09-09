@@ -52,12 +52,10 @@ export default function Timecards() {
   const [weekEnding, setWeekEnding] = useState(() => weekEndingKey(new Date()));
   const [cards, setCards] = useState<Timecard[] | null>(null);
   const [selected, setSelected] = useState('');
-  // How the stack paginates. Either way a card is never cut across two pages;
-  // this only decides whether each one also gets a page to itself.
-  const [layout, setLayout] = useState<'one-per-page' | 'fit'>('one-per-page');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [printing, setPrinting] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     void (async () => {
@@ -112,6 +110,41 @@ export default function Timecards() {
   function shiftWeek(weeks: number) {
     const [y, m, d] = weekEnding.split('-').map(Number);
     setWeekEnding(weekEndingKey(new Date(y, m - 1, d + weeks * 7, 12)));
+  }
+
+  /**
+   * Saves the cards on screen as a fillable PDF form. The PDF library is
+   * loaded on demand: it is a good deal of code, and the clock screen the
+   * crew opens every morning has no use for it.
+   */
+  async function downloadPdf() {
+    setSaving(true);
+    setError(null);
+    try {
+      // The 180px app icon is the same mark as the big logo and a fifth of the
+      // bytes; at half an inch on the page nobody can tell them apart.
+      const [{ buildTimecardsPdf, timecardsFilename }, logo] = await Promise.all([
+        import('../../lib/timecardPdf'),
+        fetch('/apple-touch-icon.png')
+          .then((r) => (r.ok ? r.arrayBuffer() : null))
+          .then((buf) => (buf ? new Uint8Array(buf) : null))
+          .catch(() => null),
+      ]);
+      const bytes = await buildTimecardsPdf(shown, logo);
+      const blob = new Blob([bytes as BlobPart], { type: 'application/pdf' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = timecardsFilename(shown, weekEnding);
+      a.click();
+      // Revoked later rather than at once: Safari has not started the download
+      // by the time click() returns, and an immediate revoke hands it nothing.
+      window.setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setSaving(false);
+    }
   }
 
   if (!sites) return <Spinner label="Loading job sites…" />;
@@ -171,26 +204,22 @@ export default function Timecards() {
           </select>
         </div>
 
-        <div className="field">
-          <label htmlFor="tc-layout">Print layout</label>
-          <select
-            id="tc-layout"
-            value={layout}
-            onChange={(e) => setLayout(e.target.value as 'one-per-page' | 'fit')}
-          >
-            <option value="one-per-page">One timecard per page</option>
-            <option value="fit">Fit two per page — a card is never split across pages</option>
-          </select>
-        </div>
-
         <div className="row-actions" style={{ marginTop: '0.9rem' }}>
           <button
             type="button"
             className="small primary"
+            onClick={() => void downloadPdf()}
+            disabled={loading || saving || shown.length === 0}
+          >
+            {saving ? 'Building PDF…' : 'Download PDF'}
+          </button>
+          <button
+            type="button"
+            className="small"
             onClick={() => openPrintDialog(setPrinting)}
             disabled={loading || printing || shown.length === 0}
           >
-            {printing ? 'Preparing…' : 'Print / PDF'}
+            {printing ? 'Preparing…' : 'Print'}
           </button>
         </div>
 
@@ -206,9 +235,10 @@ export default function Timecards() {
         )}
 
         <p className="hint">
-          Built from the clock, one card per employee. Print the stack — or pick one employee for
-          an auditor&rsquo;s copy — and choose &ldquo;Save as PDF&rdquo; in the print dialog for a
-          file. The employee signs the printed sheet.
+          Built from the clock, one card per employee, one page each. <strong>Download PDF</strong>{' '}
+          saves an Adobe PDF form — every box is editable in Acrobat or Reader, and the signature
+          box takes Fill &amp; Sign. Pick one employee for an auditor&rsquo;s copy, or leave it on
+          everyone for the week&rsquo;s stack.
         </p>
       </Card>
 
@@ -224,7 +254,7 @@ export default function Timecards() {
       )}
 
       {!loading && shown.length > 0 && (
-        <div className={`timecards timecards-${layout}`}>
+        <div className="timecards">
           {shown.map((card) => (
             <div key={card.userId} className="timecard-sheet">
               <header className="timecard-head">
