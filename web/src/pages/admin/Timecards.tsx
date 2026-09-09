@@ -52,6 +52,9 @@ export default function Timecards() {
   const [weekEnding, setWeekEnding] = useState(() => weekEndingKey(new Date()));
   const [cards, setCards] = useState<Timecard[] | null>(null);
   const [selected, setSelected] = useState('');
+  // How the stack paginates. Either way a card is never cut across two pages;
+  // this only decides whether each one also gets a page to itself.
+  const [layout, setLayout] = useState<'one-per-page' | 'fit'>('one-per-page');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [printing, setPrinting] = useState(false);
@@ -168,6 +171,18 @@ export default function Timecards() {
           </select>
         </div>
 
+        <div className="field">
+          <label htmlFor="tc-layout">Print layout</label>
+          <select
+            id="tc-layout"
+            value={layout}
+            onChange={(e) => setLayout(e.target.value as 'one-per-page' | 'fit')}
+          >
+            <option value="one-per-page">One timecard per page</option>
+            <option value="fit">Fit two per page — a card is never split across pages</option>
+          </select>
+        </div>
+
         <div className="row-actions" style={{ marginTop: '0.9rem' }}>
           <button
             type="button"
@@ -191,9 +206,9 @@ export default function Timecards() {
         )}
 
         <p className="hint">
-          Built from the clock, one card per employee, each on its own page. Print the stack — or
-          pick one employee for an auditor&rsquo;s copy — and choose &ldquo;Save as PDF&rdquo; in
-          the print dialog for a file. The employee signs the printed sheet.
+          Built from the clock, one card per employee. Print the stack — or pick one employee for
+          an auditor&rsquo;s copy — and choose &ldquo;Save as PDF&rdquo; in the print dialog for a
+          file. The employee signs the printed sheet.
         </p>
       </Card>
 
@@ -208,113 +223,116 @@ export default function Timecards() {
         </Card>
       )}
 
-      {!loading &&
-        shown.map((card) => (
-          <div key={card.userId} className="timecard-sheet">
-            <header className="timecard-head">
-              <img src="/coburn-logo.png" alt="" />
-              <div className="timecard-title">
-                <strong>COBURN EQUIPMENT</strong>
-                <span>WEEKLY TIME CARD</span>
-              </div>
-            </header>
+      {!loading && shown.length > 0 && (
+        <div className={`timecards timecards-${layout}`}>
+          {shown.map((card) => (
+            <div key={card.userId} className="timecard-sheet">
+              <header className="timecard-head">
+                <img src="/coburn-logo.png" alt="" />
+                <div className="timecard-title">
+                  <strong>COBURN EQUIPMENT</strong>
+                  <span>WEEKLY TIME CARD</span>
+                </div>
+              </header>
 
-            <div className="timecard-meta">
-              <div>
-                <span className="k">Print name:</span>
-                <span className="v">{card.name}</span>
+              <div className="timecard-meta">
+                <div>
+                  <span className="k">Print name:</span>
+                  <span className="v">{card.name}</span>
+                </div>
+                <div>
+                  <span className="k">Week ending:</span>
+                  <span className="v">{longDate(card.weekEnding)}</span>
+                </div>
+                <div>
+                  <span className="k">Job:</span>
+                  <span className="v">{card.jobs.join(', ')}</span>
+                </div>
+                <div>
+                  <span className="k">Truck #:</span>
+                  <span className="v" />
+                </div>
               </div>
-              <div>
-                <span className="k">Week ending:</span>
-                <span className="v">{longDate(card.weekEnding)}</span>
-              </div>
-              <div>
-                <span className="k">Job:</span>
-                <span className="v">{card.jobs.join(', ')}</span>
-              </div>
-              <div>
-                <span className="k">Truck #:</span>
-                <span className="v" />
-              </div>
-            </div>
 
-            <table className="timecard-table">
-              <thead>
-                <tr>
-                  <th />
-                  <th colSpan={3} className="timecard-group">
-                    Paycheck hours
-                  </th>
-                  <th colSpan={4} />
-                  <th rowSpan={2} className="timecard-machines">
-                    Machine(s) operated
-                  </th>
-                </tr>
-                <tr>
-                  <th />
-                  <th>Regular</th>
-                  <th>OVT</th>
-                  <th>Dbl time</th>
-                  <th>Time in</th>
-                  <th>Time out</th>
-                  <th>Time in</th>
-                  <th>Time out</th>
-                </tr>
-              </thead>
-              <tbody>
-                {card.days.map((day, i) => (
-                  <tr key={day.date}>
-                    <td className="timecard-day">
-                      {DAY_NAMES[i]}
-                      {day.stillOnTheClock && (
-                        <span className="ticket-open" title="Still on the clock">
-                          *
-                        </span>
-                      )}
-                    </td>
-                    <td>{hrs(day.regular)}</td>
-                    <td>{hrs(day.overtime)}</td>
-                    <td>{hrs(day.doubleTime)}</td>
-                    <td>{time(day.in1)}</td>
-                    <td>{time(day.out1)}</td>
-                    <td>{time(day.in2)}</td>
-                    <td>{time(day.out2)}</td>
-                    <td className="timecard-machines">{day.machines.join(', ')}</td>
+              <table className="timecard-table">
+                <thead>
+                  <tr>
+                    <th />
+                    <th colSpan={3} className="timecard-group">
+                      Paycheck hours
+                    </th>
+                    <th colSpan={4} />
+                    <th rowSpan={2} className="timecard-machines">
+                      Machine(s) operated
+                    </th>
                   </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr>
-                  <th />
-                  <th>Total reg</th>
-                  <th>Ttl OVT</th>
-                  <th>Ttl dbl</th>
-                  <th colSpan={5} className="timecard-sig-label">
-                    Signature: (Required)
-                  </th>
-                </tr>
-                <tr>
-                  <td className="timecard-day">TOTALS</td>
-                  <td>{hrs(card.totals.regularHours)}</td>
-                  <td>{hrs(card.totals.overtimeHours)}</td>
-                  <td>{hrs(card.totals.doubleTimeHours)}</td>
-                  <td colSpan={5} className="timecard-sig-line" />
-                </tr>
-              </tfoot>
-            </table>
+                  <tr>
+                    <th />
+                    <th>Regular</th>
+                    <th>OVT</th>
+                    <th>Dbl time</th>
+                    <th>Time in</th>
+                    <th>Time out</th>
+                    <th>Time in</th>
+                    <th>Time out</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {card.days.map((day, i) => (
+                    <tr key={day.date}>
+                      <td className="timecard-day">
+                        {DAY_NAMES[i]}
+                        {day.stillOnTheClock && (
+                          <span className="ticket-open" title="Still on the clock">
+                            *
+                          </span>
+                        )}
+                      </td>
+                      <td>{hrs(day.regular)}</td>
+                      <td>{hrs(day.overtime)}</td>
+                      <td>{hrs(day.doubleTime)}</td>
+                      <td>{time(day.in1)}</td>
+                      <td>{time(day.out1)}</td>
+                      <td>{time(day.in2)}</td>
+                      <td>{time(day.out2)}</td>
+                      <td className="timecard-machines">{day.machines.join(', ')}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr>
+                    <th />
+                    <th>Total reg</th>
+                    <th>Ttl OVT</th>
+                    <th>Ttl dbl</th>
+                    <th colSpan={5} className="timecard-sig-label">
+                      Signature: (Required)
+                    </th>
+                  </tr>
+                  <tr>
+                    <td className="timecard-day">TOTALS</td>
+                    <td>{hrs(card.totals.regularHours)}</td>
+                    <td>{hrs(card.totals.overtimeHours)}</td>
+                    <td>{hrs(card.totals.doubleTimeHours)}</td>
+                    <td colSpan={5} className="timecard-sig-line" />
+                  </tr>
+                </tfoot>
+              </table>
 
-            {card.days.some((d) => d.stillOnTheClock) && (
-              <p className="ticket-note">
-                * still on the clock — hours are not final until they clock out
+              {card.days.some((d) => d.stillOnTheClock) && (
+                <p className="ticket-note">
+                  * still on the clock — hours are not final until they clock out
+                </p>
+              )}
+
+              <p className="timecard-confirm">
+                I confirm that I have received all my required breaks to include lunch. I have NO
+                injuries to report during this work period.
               </p>
-            )}
-
-            <p className="timecard-confirm">
-              I confirm that I have received all my required breaks to include lunch. I have NO
-              injuries to report during this work period.
-            </p>
-          </div>
-        ))}
+            </div>
+          ))}
+        </div>
+      )}
     </>
   );
 }
