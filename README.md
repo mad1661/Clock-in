@@ -29,6 +29,10 @@ re-reads your Firebase config from the project and checks the API key still
 works before building, so it cannot ship a site nobody can sign in to. See
 SETUP.md if it ever tells you the key is invalid.
 
+The version shown in the app's top bar (and under **Account → About this app**)
+comes from `"version"` in `web/package.json`. Bump it there as part of each
+release so anyone can read off which version a phone is running.
+
 Once deployed, the app lives at **https://clockit-bc990.web.app**.
 
 ---
