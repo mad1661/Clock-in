@@ -1013,6 +1013,15 @@ a.small.primary {
     padding: 0 !important;
   }
 
+  /* On screen the shell is a flex column. Browsers do not reliably honour
+     page-break rules on flex items — Safari ignores them outright — so the
+     printed sheets were being cut wherever the paper ran out. Plain blocks
+     paginate the way the break rules below say. */
+  .app,
+  main {
+    display: block !important;
+  }
+
   .ticket-sheet {
     border: 0;
     border-radius: 0;
@@ -1137,6 +1146,8 @@ a.small.primary {
   letter-spacing: 0.02em;
   line-height: 1.15;
   background: #f2f4f8;
+  /* Headings wrap rather than clip: "TOTAL REG" was losing its tail on paper. */
+  white-space: normal;
 }
 
 .timecard-table td {
@@ -1181,12 +1192,32 @@ a.small.primary {
     padding: 0;
     margin: 0;
     font-size: 9pt;
-    /* One employee's card per page, so any single card can be handed over. */
+    /* Never cut a card in two: a card that does not fit moves whole to the
+       next page. Both spellings, because Safari only knows the old one. */
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  /* One employee's card per page, so any single card can be handed over. */
+  .timecards-one-per-page .timecard-sheet {
+    break-after: page;
     page-break-after: always;
   }
 
-  .timecard-sheet:last-child {
+  .timecards-one-per-page .timecard-sheet:last-child {
+    break-after: auto;
     page-break-after: auto;
+  }
+
+  /* As many whole cards as fit on each page — two, on letter paper. Rows are
+     a touch shorter than on screen so the pair clears the page with room to
+     spare; the hand-written fields are still a comfortable pen height. */
+  .timecards-fit .timecard-table td {
+    height: 1.5rem;
+  }
+
+  .timecards-fit .timecard-sheet + .timecard-sheet {
+    margin-top: 0.3in;
   }
 
   .timecard-table th {
