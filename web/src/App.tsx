@@ -28,7 +28,7 @@ function Shell({ children }: { children: React.ReactNode }) {
           <img src="/coburn-logo.png" alt="Coburn Equipment Rentals" />
           <span className="brand-text">
             <span className="brand-name">Coburn Equipment Rentals</span>
-            <span className="brand-sub">Time clock</span>
+            <span className="brand-sub">Time clock · v{__APP_VERSION__}</span>
           </span>
         </span>
         <span className="who">{profile?.displayName ?? profile?.email}</span>

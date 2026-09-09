@@ -82,6 +82,20 @@ export default function Account() {
         </div>
       </Card>
 
+      {/* Which copy of the app this phone is running. The version is what a
+          person quotes; the build stamp tells the two of us apart when a
+          service worker has held on to an older copy of the same version. */}
+      <Card title="About this app">
+        <div className="row-meta">
+          <span>Version {__APP_VERSION__}</span>
+          <span className="mono">Build {__BUILD_ID__}</span>
+        </div>
+        <p className="hint" style={{ marginBottom: 0 }}>
+          If the version here is older than the one you expect, close the app fully and open it
+          again to pick up the latest copy.
+        </p>
+      </Card>
+
       {profile?.role === 'admin' && <MySignature />}
 
       <Card title="Change password">
