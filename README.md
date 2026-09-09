@@ -88,6 +88,9 @@ Once deployed, the app lives at **https://clockit-bc990.web.app**.
   each rental ticket shows what that day cost in labour against what it billed —
   on the office copy only, never on the customer's printed sheet.
 - The **Daily Rental Ticket & Equipment Report**, built from the clock.
+- **Weekly timecards** for the yard: hours at Coburn Yard are payroll, not
+  billing, so they print on the paper weekly timecard form instead of a rental
+  ticket — one employee per page, ready to sign and hand to an auditor.
 - California overtime worked out per week, including the daily rules — four
   ten-hour days is 8 hours of overtime even though the week totals 40.
 
@@ -192,6 +195,28 @@ actually ran, which is less than the operator was there for whenever it broke
 down or sat waiting on another trade. And the **four-hour minimum never applies
 to machine hours** — that minimum is what the yard owes an operator who turned
 out, not something to bill a customer for a machine that stood still.
+
+### The weekly timecard
+
+Hours worked at the yard are the company paying its own people, not something
+billed to a customer, so they never appear on a Daily Rental Ticket. They go on
+the **Timecards** tab instead: one card per employee per Monday-to-Sunday week,
+laid out to match the paper "COBURN EQUIPMENT WEEKLY TIME CARD" form, headed
+with the week-ending Sunday. Print the stack — or pick one employee from the
+dropdown — and use the browser's "Save as PDF" for a file; each card is its own
+page, so any single one can be pulled out for an audit. The employee signs the
+printed sheet.
+
+Each day's paycheck hours are split into regular, overtime and double time
+using the same California rules as the timesheet — worked out over the
+Monday-to-Sunday workweek — with the four-hour show-up minimum and quarter-hour
+rounding applied per day, exactly as the rental ticket credits an operator. The
+two in/out pairs are the morning and the afternoon either side of lunch, and
+the machines column lists what they ran that day.
+
+Which sites count as the yard is the **Hours go on weekly timecards** checkbox
+on the job site. Until somebody touches that checkbox, a site named "Coburn
+Yard" is recognised by name, so the behaviour is right out of the box.
 
 ### The supervisor's signature
 

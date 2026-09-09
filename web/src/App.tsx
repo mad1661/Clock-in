@@ -16,6 +16,7 @@ import Activity from './pages/admin/Activity';
 import Equipment from './pages/admin/Equipment';
 import Problems from './pages/admin/Problems';
 import DailyTicket from './pages/admin/DailyTicket';
+import Timecards from './pages/admin/Timecards';
 
 function Shell({ children }: { children: React.ReactNode }) {
   const { profile, isAdmin, isSupport, signOut } = useAuth();
@@ -53,6 +54,7 @@ function Shell({ children }: { children: React.ReactNode }) {
         {isAdmin && <NavLink to="/admin/on-site">On site</NavLink>}
         {isAdmin && <NavLink to="/admin/review">Review</NavLink>}
         {isAdmin && <NavLink to="/admin/ticket">Rental ticket</NavLink>}
+        {isAdmin && <NavLink to="/admin/timecards">Timecards</NavLink>}
         {isAdmin && <NavLink to="/admin/timesheets">Timesheets</NavLink>}
         {isAdmin && <NavLink to="/admin/workers">Workers</NavLink>}
         {isAdmin && <NavLink to="/admin/sites">Job sites</NavLink>}
@@ -224,6 +226,14 @@ export function App() {
           element={
             <RequireAdmin>
               <DailyTicket />
+            </RequireAdmin>
+          }
+        />
+        <Route
+          path="/admin/timecards"
+          element={
+            <RequireAdmin>
+              <Timecards />
             </RequireAdmin>
           }
         />

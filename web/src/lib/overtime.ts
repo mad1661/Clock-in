@@ -45,18 +45,29 @@ function isConsecutive(previous: string, current: string): boolean {
   return Math.round((cur.getTime() - prev.getTime()) / 86400000) === 1;
 }
 
+/** One day's hours, split the way a timecard column wants them. */
+export interface DaySplit {
+  date: string;
+  hours: number;
+  regular: number;
+  overtime: number;
+  doubleTime: number;
+}
+
 /**
- * Splits one workweek's daily totals into straight, time-and-a-half and
- * double-time hours. Pass the days of a single Sunday-to-Saturday week.
+ * Splits each day of one workweek into straight, time-and-a-half and
+ * double-time hours. Pass the days of a single Monday-to-Sunday week.
+ *
+ * Kept per-day rather than only totalled because the weekly timecard prints a
+ * REG/OVT/DBL column against every day, and those columns have to add up to
+ * the same numbers {@link californiaOvertime} reports.
  */
-export function californiaOvertime(days: DayHours[]): OvertimeSplit {
+export function californiaOvertimeByDay(days: DayHours[]): DaySplit[] {
   const worked = days
     .filter((d) => d.hours > 0)
     .sort((a, b) => a.date.localeCompare(b.date));
 
-  let regular = 0;
-  let overtime = 0;
-  let doubleTime = 0;
+  const splits: DaySplit[] = [];
   let consecutive = 0;
   let previousDate: string | null = null;
 
@@ -67,22 +78,57 @@ export function californiaOvertime(days: DayHours[]): OvertimeSplit {
     if (consecutive >= 7) {
       // Seventh consecutive day: every hour is premium, the first eight at 1.5x
       // and the rest at 2x. No straight time accrues at all.
-      overtime += Math.min(day.hours, SEVENTH_DAY_DT_AFTER);
-      doubleTime += Math.max(0, day.hours - SEVENTH_DAY_DT_AFTER);
+      splits.push({
+        date: day.date,
+        hours: day.hours,
+        regular: 0,
+        overtime: Math.min(day.hours, SEVENTH_DAY_DT_AFTER),
+        doubleTime: Math.max(0, day.hours - SEVENTH_DAY_DT_AFTER),
+      });
       continue;
     }
 
-    regular += Math.min(day.hours, DAILY_OT_AFTER);
-    overtime += Math.max(0, Math.min(day.hours, DAILY_DT_AFTER) - DAILY_OT_AFTER);
-    doubleTime += Math.max(0, day.hours - DAILY_DT_AFTER);
+    splits.push({
+      date: day.date,
+      hours: day.hours,
+      regular: Math.min(day.hours, DAILY_OT_AFTER),
+      overtime: Math.max(0, Math.min(day.hours, DAILY_DT_AFTER) - DAILY_OT_AFTER),
+      doubleTime: Math.max(0, day.hours - DAILY_DT_AFTER),
+    });
   }
 
   // Weekly overtime applies to straight-time hours past 40. Hours already paid
   // as daily overtime are not counted again — that would be pyramiding, which
-  // California does not allow.
-  if (regular > WEEKLY_OT_AFTER) {
-    overtime += regular - WEEKLY_OT_AFTER;
-    regular = WEEKLY_OT_AFTER;
+  // California does not allow. The excess is taken from the days it was worked:
+  // whatever straight time lands after the week's 40th hour becomes overtime.
+  let straightSoFar = 0;
+  for (const split of splits) {
+    straightSoFar += split.regular;
+    const over = Math.min(split.regular, Math.max(0, straightSoFar - WEEKLY_OT_AFTER));
+    if (over > 0) {
+      split.regular -= over;
+      split.overtime += over;
+    }
+    split.regular = round2(split.regular);
+    split.overtime = round2(split.overtime);
+    split.doubleTime = round2(split.doubleTime);
+  }
+
+  return splits;
+}
+
+/**
+ * Splits one workweek's daily totals into straight, time-and-a-half and
+ * double-time hours. Pass the days of a single Monday-to-Sunday week.
+ */
+export function californiaOvertime(days: DayHours[]): OvertimeSplit {
+  let regular = 0;
+  let overtime = 0;
+  let doubleTime = 0;
+  for (const day of californiaOvertimeByDay(days)) {
+    regular += day.regular;
+    overtime += day.overtime;
+    doubleTime += day.doubleTime;
   }
 
   return {
@@ -99,10 +145,14 @@ export function dateKey(d: Date): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-/** Sunday-starting week key, the default California workweek. */
+/**
+ * Monday-starting week key. The yard's workweek runs Monday to Sunday, and the
+ * weekly 40-hour threshold has to be counted over the same seven days the
+ * timecard prints, or the two would disagree about the same week.
+ */
 export function weekKey(d: Date): string {
   const start = new Date(d);
-  start.setDate(start.getDate() - start.getDay());
+  start.setDate(start.getDate() - ((start.getDay() + 6) % 7));
   start.setHours(0, 0, 0, 0);
   return dateKey(start);
 }

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { collection, doc, getDoc, getDocs, query, where } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { useAuth } from '../../auth/AuthProvider';
@@ -7,6 +7,8 @@ import { clearDailyTicketSignature, saveDailyTicket, signDailyTicket } from '../
 import { errorMessage } from '../../lib/errors';
 import { withTimestamps } from '../../lib/snapshot';
 import { dayBounds, dayKey, draftTicket, mergeTicket, ticketId } from '../../lib/ticket';
+import { isTimecardSite } from '../../lib/timecard';
+import { openPrintDialog } from '../../lib/print';
 import { Banner, Card, Modal, Spinner } from '../../components/ui';
 import { SignatureMark, SignaturePad, type SignatureStrokes } from '../../components/SignaturePad';
 import type {
@@ -172,8 +174,12 @@ export default function DailyTicket() {
       const all = snap.docs.map((d) => ({ ...(d.data() as JobSite), id: d.id }));
       all.sort((a, b) => a.name.localeCompare(b.name));
       setSites(all);
-      if (all.length && !all.some((s) => s.id === siteId)) {
-        setSiteId(all.find((s) => s.active)?.id ?? all[0].id);
+      // The yard never gets a rental ticket — its hours go on the weekly
+      // timecards — so it is not offered here. It is still resolvable by id,
+      // so an old deep link explains itself instead of 404ing.
+      const rentals = all.filter((s) => !isTimecardSite(s));
+      if (rentals.length && !all.some((s) => s.id === siteId)) {
+        setSiteId(rentals.find((s) => s.active)?.id ?? rentals[0].id);
       }
     })().catch((err) => setError(errorMessage(err)));
     // Sites are picked once; a live subscription would fight the picker.
@@ -181,6 +187,8 @@ export default function DailyTicket() {
   }, []);
 
   const site = useMemo(() => sites?.find((s) => s.id === siteId) ?? null, [sites, siteId]);
+  const rentalSites = useMemo(() => (sites ?? []).filter((s) => !isTimecardSite(s)), [sites]);
+  const yardSelected = site ? isTimecardSite(site) : false;
 
   // Keep the address bar in step, so the page can be bookmarked or sent on.
   useEffect(() => {
@@ -190,6 +198,12 @@ export default function DailyTicket() {
 
   const load = useCallback(async () => {
     if (!site) return;
+    if (isTimecardSite(site)) {
+      // Yard hours are payroll, not billing. Never assemble a rental ticket
+      // for them — they belong on the weekly timecard.
+      setTicket(null);
+      return;
+    }
     setLoading(true);
     setError(null);
     setSaved(false);
@@ -278,42 +292,6 @@ export default function DailyTicket() {
     }
   }
 
-  /**
-   * Opens the print dialog, having first shown that something is happening.
-   *
-   * `window.print()` blocks while the browser lays the page out, and on a full
-   * ticket that is a second or more of a screen that looks frozen. Two things
-   * are needed to make that visible. React has to paint before the call, which
-   * takes two frames — one to commit the state, one to put it on the glass; a
-   * single frame commits but never reaches the screen. And the indicator has to
-   * be an overlay rather than a change of button label, because by the time
-   * somebody has filled in the hour meters they have scrolled the toolbar off
-   * the top of the page and would never see it.
-   *
-   * Cleared by `afterprint`, and deliberately NOT when print() returns. Safari
-   * returns from that call straight away and carries on building the sheet in
-   * the background, so clearing there made the indicator flash up and vanish
-   * while the wait it was reporting had barely started.
-   */
-  function printTicket() {
-    setPrinting(true);
-
-    let finished = false;
-    const done = () => {
-      if (finished) return;
-      finished = true;
-      window.removeEventListener('afterprint', done);
-      window.clearTimeout(guard);
-      setPrinting(false);
-    };
-    // Backstop for a browser that never fires afterprint. Long, because
-    // stopping early is the failure people actually notice.
-    const guard = window.setTimeout(done, 60000);
-    window.addEventListener('afterprint', done);
-
-    requestAnimationFrame(() => requestAnimationFrame(() => window.print()));
-  }
-
   async function sign(useInstead?: SignatureStrokes | null) {
     const mark = useInstead ?? drawn;
     if (!ticket || !mark) return;
@@ -350,7 +328,9 @@ export default function DailyTicket() {
         <div className="field">
           <label htmlFor="t-site">Job site</label>
           <select id="t-site" value={siteId} onChange={(e) => setSiteId(e.target.value)}>
-            {sites.map((s) => (
+            {/* A yard site deep-linked into the URL stays selectable so the
+                picker does not silently show the wrong site's name. */}
+            {(yardSelected && site ? [site, ...rentalSites] : rentalSites).map((s) => (
               <option key={s.id} value={s.id}>
                 {s.name}
                 {s.active ? '' : ' (retired)'}
@@ -392,7 +372,7 @@ export default function DailyTicket() {
           <button
             type="button"
             className="small primary"
-            onClick={printTicket}
+            onClick={() => openPrintDialog(setPrinting)}
             disabled={!ticket || printing}
           >
             {printing ? 'Preparing…' : 'Print / PDF'}
@@ -408,6 +388,13 @@ export default function DailyTicket() {
               Your print dialog will open when it is ready.
             </span>
           </div>
+        )}
+
+        {yardSelected && site && (
+          <Banner kind="info" title={`${site.name} does not get a rental ticket`}>
+            Hours at the yard are payroll, not billing, so they go on the weekly{' '}
+            <Link to="/admin/timecards">Timecards</Link> instead.
+          </Banner>
         )}
 
         <p className="hint">

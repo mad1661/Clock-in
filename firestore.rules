@@ -285,6 +285,8 @@ service cloud.firestore {
         && request.resource.data.radiusMeters <= 2000
         && request.resource.data.metersPerDegLng is number
         && request.resource.data.metersPerDegLng > 0
+        // The yard's flag: hours go on weekly timecards, not a rental ticket.
+        && request.resource.data.get('timecardsOnly', false) is bool
         && request.resource.data.updatedAt == request.time;
 
       // Retired by setting active:false, never removed — a shift pointing at a
